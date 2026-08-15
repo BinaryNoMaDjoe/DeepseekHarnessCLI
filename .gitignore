@@ -1,0 +1,11 @@
+node_modules/
+lib/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.DS_Store
+_research/
+profiles/*/node_modules/
+.tmp/
+*.log

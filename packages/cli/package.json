@@ -1,0 +1,28 @@
+{
+  "name": "@deepseek-harness/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "dsht — launcher for the DSHT terminal agent: forwards to the dsh tui profile, provisions it on first run.",
+  "bin": {
+    "dsht": "./bin/dsht.mjs",
+    "dsht-install": "./bin/dsht-install.mjs"
+  },
+  "files": [
+    "bin/**",
+    "lib/**"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

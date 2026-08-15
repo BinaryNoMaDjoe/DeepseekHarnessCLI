@@ -1,0 +1,39 @@
+# The DSHT tui bundle patch: the interactive terminal surface over dsh-base.
+# Follows the dsh-headless pattern: no Host, HTTP, Web runtime, or browser
+# plugin. dsh-base's insert rows remain untouched; this layer only restates
+# mode-specific rows and inserts the TUI surface plugins.
+#
+# Rows are addressed by id; the last write per row wins. The profile's own
+# cordis.patch.yml (user layer) is applied after this file.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+      You run inside the dsht terminal client; the user is watching the same transcript.
+
+# The shared module-reload HMR row stays off, matching the headless surface.
+- id: hmr
+  disabled: true
+
+- id: tools
+  config:
+    # The same temporary process-wide Code Mode opt-in as the Web surface.
+    mode: !!js process.env.DSH_TOOLS_MODE
+
+- insert:
+    # ask_user_question is not part of dsh-base; the TUI registers the
+    # user-questions provider, so the tool has a human answerer.
+    - id: ask-user-tool
+      name: "@deepseek-ai/dsh-tool-ask-user"
+
+    - id: tui-startup
+      name: "@deepseek-harness/tui-bundle/startup"
+
+    - id: tui-runner
+      name: "@deepseek-harness/tui-bundle"
+      inject: [tuiStartup]
+      config:
+        # Scripted mock provider for e2e and demos: DSH_MOCK_LLM=1 plus
+        # DSH_MOCK_LLM_REPLY / DSH_MOCK_LLM_TOOL control the script.
+        mockLlm: !!js (!!process.env.DSH_MOCK_LLM)
