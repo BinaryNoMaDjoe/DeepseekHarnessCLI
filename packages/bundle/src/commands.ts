@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import type { DshClient, SlashCommand } from "@deepseek-harness/sdk";
 import { DshAgentHandle, type DshAdapter } from "./dsh-adapter.js";
+import type { ThemeManager } from "./theme-manager.js";
 
 /**
  * Bundle-provided slash commands. TUI-local commands are implemented here
@@ -18,6 +19,7 @@ export interface CommandDeps {
   currentModel(): { provider: string; model: string };
   saveModel(selection: { provider: string; model: string }): Promise<void>;
   permissionMode: string;
+  themes: ThemeManager;
 }
 
 export function buildCommands(deps: CommandDeps): SlashCommand[] {
@@ -82,9 +84,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
         }
         context.emitLocal(
           sessions
-            .map(
-              (session) => "  " + session.id.slice(0, 12) + "  " + (session.title ?? "(untitled)"),
-            )
+            .map((session) => "  " + session.id + "  " + (session.title ?? "(untitled)"))
             .join("\n"),
         );
       },
@@ -100,10 +100,12 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
         }
         try {
           const previous = deps.client.current;
+          // Dispose the old handle first: its live events must not leak into
+          // the new session's transcript (store resets on session/ready).
+          await previous?.dispose?.();
           const handle = await deps.client.resumeSession(id);
           (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
-          await previous?.dispose?.();
-          context.emitLocal("resumed " + id.slice(0, 12));
+          context.emitLocal("resumed " + id);
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));
         }
@@ -115,9 +117,9 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
       async run(_args, context) {
         try {
           const previous = deps.client.current;
+          await previous?.dispose?.();
           const handle = await deps.client.createSession();
           (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
-          await previous?.dispose?.();
           context.emitLocal("new session: " + handle.sessionId.slice(0, 12));
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));
@@ -134,7 +136,8 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
           return;
         }
         const lines = handle.agent.session.events.map((event) => JSON.stringify(event));
-        const path = "./dsht-session-" + handle.sessionId.slice(0, 12) + ".jsonl";
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const path = "./dsht-session-" + handle.sessionId.slice(0, 12) + "-" + stamp + ".jsonl";
         writeFileSync(path, lines.join("\n") + "\n", "utf8");
         context.emitLocal("wrote " + path + " (" + lines.length + " events)");
       },
@@ -155,6 +158,44 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
             "\npermission mode: " +
             deps.permissionMode,
         );
+      },
+    },
+    {
+      name: "theme",
+      description: "list themes, or switch with /theme <name>",
+      async run(args, context) {
+        const name = args[0];
+        if (name === undefined || name === "") {
+          const current = deps.themes.current();
+          const rows = deps.themes
+            .available()
+            .map((entry) => {
+              const marker = entry.name === current ? " *" : "  ";
+              return (
+                marker +
+                " " +
+                entry.name +
+                (entry.builtin ? " (builtin)" : "") +
+                " [" +
+                entry.mode +
+                "]"
+              );
+            })
+            .join("\n");
+          context.emitLocal(
+            "themes:\n" + rows + "\ncurrent: " + current + " — switch with /theme <name>",
+          );
+          return;
+        }
+        if (!deps.themes.set(name)) {
+          context.emitLocal(
+            "unknown theme: " +
+              name +
+              " — built-ins: deepseek-dark, deepseek-light; custom themes live in $DSH_HOME/themes/<name>.json",
+          );
+          return;
+        }
+        context.emitLocal("theme set to " + name + " (applies to new sessions)");
       },
     },
     {

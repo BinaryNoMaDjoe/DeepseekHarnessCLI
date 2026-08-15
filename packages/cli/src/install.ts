@@ -29,9 +29,20 @@ export interface InstallResult {
   created: boolean;
 }
 
+/** True when this process runs inside a DSH harness session itself. */
+export function isNestedHarnessSession(): boolean {
+  return (
+    process.env.DSH_SESSION_ID !== undefined ||
+    process.env.DSH_SHELL !== undefined ||
+    process.env.DSH_WEB_URL !== undefined
+  );
+}
+
 export function resolveDshHome(home?: string): string {
   if (home !== undefined && home !== "") return home;
-  const env = process.env.DSH_HOME;
+  // Inside a harness session the inherited DSH_HOME belongs to the host:
+  // provisioning into it would pollute the host's profile home.
+  const env = isNestedHarnessSession() ? undefined : process.env.DSH_HOME;
   if (env !== undefined && env !== "") return env;
   return join(homedir(), ".dsh");
 }

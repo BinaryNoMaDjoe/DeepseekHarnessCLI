@@ -10,6 +10,8 @@ export interface AgentHandle {
   readonly sessionId: SessionId;
   /** Whether this handle resumed a persisted session. */
   readonly resumed: boolean;
+  /** The provider/model this session actually runs, when known. */
+  readonly selection?: { provider: string; model: string };
   /** Submit one user prompt; safe to call while the agent is busy — DSH
    * queues followups in the agent inbox. */
   followup(input: UserInput): void;
@@ -31,7 +33,7 @@ export interface AgentHandle {
  */
 export interface ClientAdapter {
   createSession(options: CreateSessionOptions): Promise<AgentHandle>;
-  resumeSession(sessionId: SessionId): Promise<AgentHandle>;
+  resumeSession(sessionId: SessionId, options?: CreateSessionOptions): Promise<AgentHandle>;
   listSessions(query?: string, limit?: number): Promise<SessionInfo[]>;
 }
 
@@ -46,7 +48,7 @@ export interface DshClient {
   readonly current: AgentHandle | null;
   attach(handle: AgentHandle): void;
   createSession(options?: CreateSessionOptions): Promise<AgentHandle>;
-  resumeSession(sessionId: SessionId): Promise<AgentHandle>;
+  resumeSession(sessionId: SessionId, options?: CreateSessionOptions): Promise<AgentHandle>;
   listSessions(query?: string, limit?: number): Promise<SessionInfo[]>;
 }
 
@@ -62,6 +64,9 @@ export function createDshClient(options: DshClientOptions): DshClient {
   function attach(handle: AgentHandle): void {
     current = handle;
     events.emit({ type: "session/ready", sessionId: handle.sessionId });
+    if (handle.selection !== undefined) {
+      events.emit({ type: "session/model", selection: handle.selection });
+    }
   }
 
   return {
@@ -76,8 +81,11 @@ export function createDshClient(options: DshClientOptions): DshClient {
       attach(handle);
       return handle;
     },
-    async resumeSession(sessionId: SessionId): Promise<AgentHandle> {
-      const handle = await options.adapter.resumeSession(sessionId);
+    async resumeSession(
+      sessionId: SessionId,
+      resumeOptions?: CreateSessionOptions,
+    ): Promise<AgentHandle> {
+      const handle = await options.adapter.resumeSession(sessionId, resumeOptions);
       attach(handle);
       return handle;
     },

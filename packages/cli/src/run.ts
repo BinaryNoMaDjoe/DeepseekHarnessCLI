@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { isInstalled, installProfile, PROFILE_NAME } from "./install.js";
+import { isInstalled, isNestedHarnessSession, installProfile, PROFILE_NAME } from "./install.js";
 
 /**
  * dsht execution: ensure the tui profile exists, then hand the invocation
@@ -19,9 +19,19 @@ export async function runDsht(options: RunOptions): Promise<number> {
     installProfile({ linkPath: options.linkPath });
   }
   const bin = options.dshBin ?? "dsh";
+  // Scrub the host session's DSH_* variables when nested: the spawned dsh
+  // must resolve its own profile home, not the host's.
+  const env = isNestedHarnessSession()
+    ? Object.fromEntries(
+        Object.entries(process.env).filter(
+          ([key]) => !key.startsWith("DSH_") && !key.startsWith("XDG_"),
+        ),
+      )
+    : undefined;
   const child = spawn(bin, ["--profile", PROFILE_NAME, ...options.args], {
     stdio: "inherit",
     shell: process.platform === "win32",
+    env,
   });
   return await new Promise<number>((resolve, reject) => {
     child.on("error", reject);

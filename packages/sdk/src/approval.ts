@@ -6,6 +6,10 @@ import type { Emitter } from "./events.js";
  * whenever the runtime needs a human decision it raises a request, which the
  * active surface (TUI prompt, headless policy) answers through the broker.
  * The bundle bridges DSH's approval/request waterfall into this broker.
+ *
+ * Requests are strictly serialized: DSH may ask concurrently (parallel
+ * tool calls), and the modal surface can only show one at a time, so every
+ * request queues behind the previous one.
  */
 
 /** What the runtime is asking permission for. */
@@ -57,11 +61,11 @@ export interface ApprovalBroker {
   readonly events: Emitter<{ type: "approval/request"; request: ApprovalRequest }>;
   answerer: Answerer;
   setAnswerer(answerer: Answerer): void;
-  /** Route a runtime request to the current answerer. */
+  /** Route a runtime request to the current answerer (serialized). */
   request(request: ApprovalRequest): Promise<ApprovalDecision>;
   /**
    * Settle the in-flight request with a decision from outside the answerer
-   * (abort signals, surface teardown). No-op when nothing is pending.
+   * (abort signals, surface teardown). No-op when nothing is active.
    */
   cancelCurrent(decision: ApprovalDecision): void;
 }
@@ -72,23 +76,30 @@ interface Pending {
 }
 
 /**
- * Single-threaded broker: one request at a time, fail-closed by default.
+ * Serialized broker: one active request at a time, the rest queue in
+ * order; fail-closed by default; answerer throws resolve to deny.
  */
 export function createApprovalBroker(options: ApprovalBrokerOptions = {}): ApprovalBroker {
   const events = createEmitter<{ type: "approval/request"; request: ApprovalRequest }>();
   let pending: Pending | null = null;
+  let tail: Promise<unknown> = Promise.resolve();
+
   const broker: ApprovalBroker = {
     events,
     answerer: options.answerer ?? denyAll,
     setAnswerer(answerer: Answerer): void {
       broker.answerer = answerer;
     },
-    async request(request: ApprovalRequest): Promise<ApprovalDecision> {
-      events.emit({ type: "approval/request", request });
-      return await new Promise<ApprovalDecision>((resolve) => {
-        pending = { request, resolve };
-        void broker.answerer.answer(request).then(resolve);
+    request(request: ApprovalRequest): Promise<ApprovalDecision> {
+      const settled = tail.then((): Promise<ApprovalDecision> => {
+        events.emit({ type: "approval/request", request });
+        return new Promise<ApprovalDecision>((resolve) => {
+          pending = { request, resolve };
+          void broker.answerer.answer(request).then(resolve, () => resolve({ action: "deny" }));
+        });
       });
+      tail = settled.catch(() => undefined);
+      return settled;
     },
     cancelCurrent(decision: ApprovalDecision): void {
       if (pending === null) return;

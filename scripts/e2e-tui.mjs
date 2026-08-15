@@ -67,12 +67,21 @@ try {
   term.write("/help\r");
   await waitFor((text) => text.includes("available commands"), 20000);
   console.log("[e2e] /help rendered — submit path works");
+  term.write("/theme\r");
+  await waitFor((text) => text.includes("deepseek-dark") && text.includes("deepseek-light"), 20000);
+  console.log("[e2e] /theme listed the built-in themes");
+  term.write("/theme deepseek-light\r");
+  await waitFor((text) => text.includes("theme set to deepseek-light"), 20000);
+  console.log("[e2e] theme switch persisted");
   term.write("hello tui\r");
   await waitFor((text) => text.includes("mock reply: hello tui"), 60000);
   console.log("[e2e] reply rendered in the TUI");
   term.write("/exit\r");
   await waitFor(() => exited, 15000);
   console.log("[e2e] exited with code " + String(exitCode));
+  if (exitCode !== 0) {
+    throw new Error("unexpected exit code " + String(exitCode));
+  }
   console.log("[e2e] PASS");
   pass = true;
 } catch (error) {

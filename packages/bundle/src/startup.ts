@@ -26,6 +26,8 @@ export interface TuiStartup {
   provider: string | null;
   outputFormat: "text" | "stream-json";
   approval: HeadlessApproval;
+  /** Theme name override; null falls back to env/config/default. */
+  theme: string | null;
 }
 
 /**
@@ -56,6 +58,10 @@ export function tuiCommand(): Command {
       "grant every approval in headless mode (same as --approval allow)",
     )
     .option("--list-sessions", "list persisted sessions and exit")
+    .option(
+      "--theme <name>",
+      "theme for the interactive UI (deepseek-dark, deepseek-light, or a custom name)",
+    )
     .addHelpText(
       "after",
       [
@@ -93,6 +99,11 @@ export function apply(ctx: unknown): void {
           'error: a task is required with --print, for example: --print "run the tests"',
         );
     }
+    if (mode === "interactive" && positionals.length > 0) {
+      program.error(
+        "error: interactive mode takes no positional arguments (did you mean --print?)",
+      );
+    }
     const outputFormat =
       options["json"] === true ? "stream-json" : validateFormat(options["outputFormat"], program);
     const approval =
@@ -109,6 +120,7 @@ export function apply(ctx: unknown): void {
       provider: typeof options["provider"] === "string" ? options["provider"] : null,
       outputFormat,
       approval,
+      theme: typeof options["theme"] === "string" ? options["theme"] : null,
     });
   });
   (parseCmdline as unknown as (ctx: unknown, program: Command) => void)(ctx, program);

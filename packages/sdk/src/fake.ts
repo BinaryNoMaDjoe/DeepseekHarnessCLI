@@ -110,7 +110,10 @@ export function createFakeAdapter(options: FakeAdapterOptions = {}): FakeAdapter
       attach(handle);
       return handle;
     },
-    async resumeSession(sessionId: SessionId): Promise<AgentHandle> {
+    async resumeSession(
+      sessionId: SessionId,
+      _options?: CreateSessionOptions,
+    ): Promise<AgentHandle> {
       const handle = new FakeAgentHandle(sessionId, true);
       sessions.set(sessionId, handle);
       attach(handle);

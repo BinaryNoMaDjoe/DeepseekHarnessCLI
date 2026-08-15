@@ -24,6 +24,7 @@ export type AgentStatus = { status: "idle" | "running" };
 
 export type SdkEvent =
   | { type: "session/ready"; sessionId: string }
+  | { type: "session/model"; selection: { provider: string; model: string } }
   | { type: "turn/start" }
   | { type: "turn/end"; reason: TurnReason }
   | { type: "step/start" }
@@ -46,7 +47,8 @@ export type SdkEvent =
   | { type: "plan/mode"; active: boolean }
   | { type: "agent/status"; detail: AgentStatus }
   | { type: "agent/error"; error: { code: string; message: string } }
-  | { type: "surface/exit"; code: number };
+  | { type: "surface/exit"; code: number }
+  | { type: "surface/local"; text: string };
 
 /** Unsubscribe function returned by subscription APIs. */
 export type Unsubscribe = () => void;

@@ -19,6 +19,14 @@ type Op = { kind: "del" } | { kind: "add"; indexB: number } | { kind: "same"; in
 export function unifiedDiff(before: string, after: string, context = 3): DiffLine[] {
   const a = before.split("\n");
   const b = after.split("\n");
+  // Quadratic LCS is only safe for small inputs; beyond the budget fall
+  // back to a full-replace diff (still correct, linear time).
+  if (a.length * b.length > 1_000_000) {
+    return [
+      ...a.map((text) => ({ kind: "del" as const, text })),
+      ...b.map((text) => ({ kind: "add" as const, text })),
+    ];
+  }
   const ops = lcsOps(a, b);
   const rows: DiffLine[] = [];
   let ai = 0;

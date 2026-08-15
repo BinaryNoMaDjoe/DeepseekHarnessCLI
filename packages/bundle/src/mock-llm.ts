@@ -91,6 +91,9 @@ function readToolScript(): { name: string; arguments: string } | null {
   try {
     const parsed = JSON.parse(raw) as { name: string; arguments: unknown };
     if (typeof parsed.name !== "string") return null;
+    // One-shot: consume the script so the next turn answers with text
+    // instead of looping on the same tool call forever.
+    delete process.env.DSH_MOCK_LLM_TOOL;
     return { name: parsed.name, arguments: JSON.stringify(parsed.arguments ?? {}) };
   } catch {
     return null;

@@ -78,41 +78,57 @@ export function createDshAdapter(
     return handle;
   }
 
-  async function resumeSession(sessionId: string): Promise<AgentHandle> {
+  async function resumeSession(
+    sessionId: string,
+    resumeOptions?: CreateSessionOptions,
+  ): Promise<AgentHandle> {
     const sid = SessionId(sessionId);
-    const resumed = await services.agents.resume({ resumeSessionId: sid });
+    const selection = services.agentDefaultModel.currentSelection();
+    const provider = resumeOptions?.provider ?? selection.provider;
+    const model = resumeOptions?.model ?? selection.model;
+    const resumed = await services.agents.resume({
+      resumeSessionId: sid,
+      agentOptions: { provider, model },
+      setup: (agentCtx: unknown) => {
+        (
+          installModelSelection as unknown as (
+            ctx: unknown,
+            sel: { current: { provider: string; model: string }; assembled: undefined },
+          ) => void
+        )(agentCtx, { current: { provider, model }, assembled: void 0 });
+        mountForwarders(agentCtx, sid, forward);
+      },
+    });
     const handle = new DshAgentHandle(resumed.agent, true, services.sessions, resumed.dispose);
     current = handle;
-    // Live listeners: resume-time setup cannot register them, so subscribe
-    // on the agent's own scoped context after publication.
-    mountForwarders((resumed.agent as { ctx?: unknown }).ctx, sid, forward);
     return handle;
   }
 
   async function listSessions(query?: string, limit = 50): Promise<SessionInfo[]> {
     const engine = services.sessionQuery;
     if (engine === undefined) return [];
-    try {
-      const rows = await engine.listSessions();
-      const out: SessionInfo[] = [];
-      for (const row of rows.slice(0, limit)) {
-        const id = idOf(row);
-        if (id === null) continue;
-        if (
-          query !== undefined &&
-          query !== "" &&
-          !(id.includes(query) || (titleOf(row)?.includes(query) ?? false))
-        )
-          continue;
-        out.push({
-          id,
-          title: (await engine.readTitle(id)) ?? titleOf(row),
-        });
-      }
-      return out;
-    } catch {
-      return [];
+    // DSH's listSessions returns SessionRecord[] {header:{id, createdAt}, live,
+    // persisted} in deterministic newest-first order.
+    const rows = await engine.listSessions();
+    const out: SessionInfo[] = [];
+    for (const row of rows.slice(0, limit)) {
+      const header = (row as { header?: { id?: string; createdAt?: number } }).header;
+      const id = header?.id;
+      if (typeof id !== "string" || id === "") continue;
+      const title = (await engine.readTitle(id)) ?? undefined;
+      if (
+        query !== undefined &&
+        query !== "" &&
+        !(id.includes(query) || (title?.includes(query) ?? false))
+      )
+        continue;
+      out.push({
+        id,
+        title: typeof title === "string" ? title : undefined,
+        updatedAt: header?.createdAt,
+      });
     }
+    return out;
   }
 
   return {
@@ -134,6 +150,12 @@ export class DshAgentHandle implements AgentHandle {
 
   get sessionId(): string {
     return this.agent.id;
+  }
+
+  get selection(): { provider: string; model: string } | undefined {
+    const options = this.agent.options as { provider?: string; model?: string } | undefined;
+    if (options?.provider === undefined || options.model === undefined) return undefined;
+    return { provider: options.provider, model: options.model };
   }
 
   followup(input: UserInput): void {
@@ -295,7 +317,14 @@ function mapReason(reason: unknown): TurnReason {
         },
       };
     default:
-      return { kind: "completed" };
+      // Fail closed: an unknown terminal reason must not report success.
+      return {
+        kind: "error",
+        error: {
+          code: "UNKNOWN_REASON",
+          message: "turn ended with unknown reason: " + r.kind,
+        },
+      };
   }
 }
 
@@ -316,14 +345,4 @@ function mapMessage(message: unknown): Message {
       return { type: "text", text: block.text ?? "" };
     }),
   };
-}
-
-function idOf(row: unknown): string | null {
-  const r = row as { id?: string; sessionId?: string };
-  return typeof r.id === "string" ? r.id : typeof r.sessionId === "string" ? r.sessionId : null;
-}
-
-function titleOf(row: unknown): string | undefined {
-  const r = row as { title?: string };
-  return typeof r.title === "string" ? r.title : undefined;
 }

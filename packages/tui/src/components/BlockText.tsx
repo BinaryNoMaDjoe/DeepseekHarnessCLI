@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { renderMarkdown, stripInline, wrapText, type MarkdownNode } from "../markdown.js";
-import { theme } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 
 export interface BlockTextProps {
   text: string;
@@ -21,11 +21,12 @@ export function BlockText({ text, width }: BlockTextProps): React.JSX.Element {
 }
 
 function MarkdownRow({ node, width }: { node: MarkdownNode; width: number }): React.JSX.Element {
+  const theme = useTheme();
   switch (node.type) {
     case "blank":
       return <Text> </Text>;
     case "heading":
-      return <Text color="whiteBright">{theme.heading(node.text)}</Text>;
+      return <Text>{theme.heading(node.text)}</Text>;
     case "code":
       return (
         <Box flexDirection="column" marginLeft={1}>
@@ -42,7 +43,7 @@ function MarkdownRow({ node, width }: { node: MarkdownNode; width: number }): Re
         </Text>
       );
     case "quote":
-      return <Text>{theme.hint("│ " + stripInline(node.text))}</Text>;
+      return <Text>{theme.secondary("│ " + stripInline(node.text))}</Text>;
     case "paragraph":
       return <Text>{wrapText(stripInline(node.text), width).join("\n")}</Text>;
   }

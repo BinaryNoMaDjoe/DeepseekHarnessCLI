@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { looksLikeDiff, parseDiff } from "../diff.js";
-import { theme } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 
 export interface ToolCallRow {
   id: string;
@@ -21,14 +21,14 @@ export function ToolCallView({
   call: ToolCallRow;
   width: number;
 }): React.JSX.Element {
+  const theme = useTheme();
   const args = truncate(call.args, Math.max(20, width - call.name.length - 4));
   const status = call.result === undefined ? "…" : call.result.ok ? "✓" : "✗";
-  const color =
-    call.result === undefined ? theme.status : call.result.ok ? theme.toolOk : theme.toolErr;
+  const color = call.result === undefined ? theme.secondary : call.result.ok ? theme.ok : theme.err;
   return (
     <Box flexDirection="column" marginLeft={1}>
       <Text>
-        {color(status)} {theme.toolName(call.name)} {theme.status(args)}
+        {color(status)} {theme.tool(call.name)} {theme.secondary(args)}
       </Text>
       {call.result !== undefined && call.result.text !== "" ? (
         <ResultBody text={call.result.text} ok={call.result.ok} />
@@ -38,6 +38,7 @@ export function ToolCallView({
 }
 
 function ResultBody({ text, ok }: { text: string; ok: boolean }): React.JSX.Element {
+  const theme = useTheme();
   if (looksLikeDiff(text)) {
     const rows = parseDiff(text).slice(0, MAX_RESULT_LINES);
     return (
@@ -60,9 +61,9 @@ function ResultBody({ text, ok }: { text: string; ok: boolean }): React.JSX.Elem
   return (
     <Box flexDirection="column" marginLeft={2}>
       {head.map((line, index) => (
-        <Text key={index}>{ok ? theme.status(line) : theme.toolErr(line)}</Text>
+        <Text key={index}>{ok ? theme.secondary(line) : theme.err(line)}</Text>
       ))}
-      {more > 0 ? <Text>{theme.status("… " + more + " more lines")}</Text> : null}
+      {more > 0 ? <Text>{theme.secondary("… " + more + " more lines")}</Text> : null}
     </Box>
   );
 }

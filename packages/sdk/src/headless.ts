@@ -89,7 +89,10 @@ export async function runHeadless(
   try {
     const handle =
       options.resume !== undefined && options.resume !== ""
-        ? await client.resumeSession(options.resume)
+        ? await client.resumeSession(options.resume, {
+            model: options.model,
+            provider: options.provider,
+          })
         : await client.createSession({ model: options.model, provider: options.provider });
     box.sessionId = handle.sessionId;
   } catch (error) {
@@ -107,6 +110,14 @@ export async function runHeadless(
     return { exitCode: EXIT_FAILURE, text: "", sessionId: box.sessionId };
   }
 
+  if (options.outputFormat === "stream-json") {
+    io.out(
+      JSON.stringify({
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: options.task }] },
+      }),
+    );
+  }
   handle.followup({ text: options.task });
   await handle.whenIdle();
   await handle.flush();

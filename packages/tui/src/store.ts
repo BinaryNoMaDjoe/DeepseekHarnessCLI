@@ -17,6 +17,7 @@ export interface TranscriptItem {
 
 export interface SessionUiState {
   sessionId: string | null;
+  model: { provider: string; model: string } | null;
   items: TranscriptItem[];
   streaming: { text: string; reasoning: string } | null;
   running: boolean;
@@ -28,6 +29,7 @@ export interface SessionUiState {
 
 const initial: SessionUiState = {
   sessionId: null,
+  model: null,
   items: [],
   streaming: null,
   running: false,
@@ -58,7 +60,21 @@ export class SessionStore {
   handle(event: SdkEvent): void {
     switch (event.type) {
       case "session/ready":
-        this.set({ sessionId: event.sessionId, items: [], error: null });
+        // Full reset: nothing from the previous session may survive the
+        // switch (streaming buffers, run state, tokens, approvals).
+        this.set({
+          sessionId: event.sessionId,
+          model: null,
+          items: [],
+          streaming: null,
+          running: false,
+          error: null,
+          approval: null,
+          tokens: null,
+        });
+        break;
+      case "session/model":
+        this.set({ model: event.selection });
         break;
       case "user/message": {
         const text = event.message.content
@@ -103,6 +119,9 @@ export class SessionStore {
         break;
       case "surface/exit":
         this.set({ exited: { code: event.code } });
+        break;
+      case "surface/local":
+        this.pushItem("local", event.text);
         break;
       default:
         break;
@@ -171,17 +190,44 @@ export class SessionStore {
   }
 
   private setToolResult(id: string, ok: boolean, text: string): void {
+    // Exact id match first. DSH's tool/result carries no callId (the adapter
+    // emits an empty id), so fall back to LIFO pairing: the most recent
+    // unresolved call. Correct for sequential tool flows; parallel flows
+    // with the same tool are a documented limitation.
     const items = this.state.items.map((item) => {
       if (item.kind !== "assistant") return item;
-      const call = item.toolCalls.find((existing) => existing.id === id);
-      if (call === undefined) return item;
-      return {
-        ...item,
-        toolCalls: item.toolCalls.map((existing) =>
-          existing.id === id ? { ...existing, result: { ok, text } } : existing,
-        ),
-      };
+      const exact = item.toolCalls.find((existing) => existing.id === id);
+      if (exact !== undefined) {
+        return {
+          ...item,
+          toolCalls: item.toolCalls.map((existing) =>
+            existing.id === id ? { ...existing, result: { ok, text } } : existing,
+          ),
+        };
+      }
+      return item;
     });
+    const exactHit = items.some(
+      (item) =>
+        item.kind === "assistant" &&
+        item.toolCalls.some((call) => call.id === id && call.result !== undefined),
+    );
+    if (exactHit) {
+      this.set({ items });
+      return;
+    }
+    // LIFO fallback: walk from the newest item backwards.
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      if (item.kind !== "assistant") continue;
+      for (let j = item.toolCalls.length - 1; j >= 0; j--) {
+        const call = item.toolCalls[j]!;
+        if (call.result !== undefined) continue;
+        item.toolCalls[j] = { ...call, result: { ok, text } };
+        this.set({ items });
+        return;
+      }
+    }
     this.set({ items });
   }
 }

@@ -149,6 +149,17 @@ e2e/演示无需 API key；`CallId`/`FinishReason` 用 DSH 品牌构造器。
 bundle 解析双锚点：安装优先、profile 次之；`dsh-base` 来自安装闭包，
 `tui-bundle` 来自 profile node_modules（`pnpm add link:<checkout>` 或 registry）。
 
+## 10.5 主题系统
+
+- 契约：`ThemeSpec {name, mode: dark|light, background, colors{11 键}}`（`packages/tui/src/theme.ts`）。
+- 内置两套基础主题表达 DSH 设计语言（克制、高级、高对比度黑白）：
+  `deepseek-dark`（黑底白字，反色强调）、`deepseek-light`（白底黑字）。
+- 自定义：`$DSH_HOME/themes/<name>.json`（chalk 颜色名或 #hex）；`validateThemeSpec` 严格校验，
+  非法主题回退默认；`buildTheme` 编译为可调用 token（错误标记与审批弹窗用反色块）。
+- 选择优先级：`--theme` > `DSH_TUI_THEME` > `$DSH_HOME/tui.json`（`/theme` 写入）> 默认。
+- 组件经 `ThemeProvider`/`useTheme()` 消费主题（React context），根容器应用背景色。
+- 用户手册：`docs/manual.md` §6。
+
 ## 11. 竞品对标与后续路线
 
 | 能力                   | Claude Code | Kimi Code CLI | DSHT v0.1          | 计划                                         |

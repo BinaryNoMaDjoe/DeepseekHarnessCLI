@@ -95,7 +95,12 @@ export function createRepl(options: ReplControllerOptions = {}): ReplController 
         message: { role: "user", content: [{ type: "text", text: trimmed }] },
       });
       status = { state: "running" };
-      agent.followup({ text: trimmed });
+      try {
+        agent.followup({ text: trimmed });
+      } catch (error) {
+        status = { state: "idle" };
+        local("submit failed: " + (error instanceof Error ? error.message : String(error)));
+      }
     },
     async cancel(): Promise<void> {
       await options.agentProvider?.()?.cancel();

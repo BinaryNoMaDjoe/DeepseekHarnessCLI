@@ -14,6 +14,7 @@ import type { DshAgentHandle } from "./dsh-adapter.js";
 import { mountAnswererBridge } from "./answerer.js";
 import { buildCommands } from "./commands.js";
 import { apply as applyMockLlm } from "./mock-llm.js";
+import { ThemeManager } from "./theme-manager.js";
 import { TUI_STARTUP_SERVICE, type TuiStartup } from "./startup.js";
 
 /**
@@ -41,7 +42,12 @@ export function apply(ctx: unknown, config: { mockLlm: boolean }): void {
     process.stderr.write(
       "dsht: " + (error instanceof Error ? error.message : String(error)) + "\n",
     );
-    process.exit(1);
+    // Route through the launcher's bounded shutdown when available: it
+    // drains the tree (telemetry, session flush, PTY cleanup).
+    const exit = (ctx as { get(name: string): unknown }).get("appExit") as
+      ((code: number) => void) | undefined;
+    if (exit !== undefined) exit(1);
+    else process.exit(1);
   });
 }
 
@@ -79,6 +85,7 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
 
   const modelService = services.agentDefaultModel;
   const permissionMode = process.env.DSH_PERMISSION_MODE ?? "workspace-write";
+  const themes = new ThemeManager();
 
   if (startup.mode === "list-sessions") {
     const sessions = await adapter.listSessions(undefined, 50);
@@ -107,8 +114,9 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
       },
       io,
     );
-    await client.current?.dispose?.();
-    bridge.dispose();
+    // runHeadless already requested exit through io.exit (appExit), which
+    // starts the launcher's tree disposal — touching services again here
+    // would double-dispose a draining tree.
     return;
   }
 
@@ -120,13 +128,17 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     currentModel: () => modelService.currentSelection(),
     saveModel: (selection) => modelService.saveSelection(selection),
     permissionMode,
+    themes,
   });
+  const themeName = startup.theme ?? themes.current();
+  const themeSpec = themes.load(themeName) ?? undefined;
   const tui = startTui({
     client,
     approval: broker,
     commands,
-    model: modelService.currentSelection(),
+    fallbackModel: modelService.currentSelection(),
     permissionMode,
+    themeSpec,
   });
 
   try {
@@ -169,6 +181,8 @@ async function attachInitial(
 
   let target = startup.resume;
   if (target === null && startup.useContinue) {
+    // DSH's listSessions is deterministic newest-first (audit §3.3), so the
+    // first entry is the most recently created session.
     const sessions = await adapter.listSessions(undefined, 5);
     target = sessions[0]?.id ?? null;
   }
@@ -179,8 +193,8 @@ async function attachInitial(
       return;
     } catch {
       client.events.emit({
-        type: "assistant/chunk",
-        chunk: { type: "text", text: "resume failed — starting a fresh session\n" },
+        type: "surface/local",
+        text: "resume failed — starting a fresh session",
       });
     }
   }
