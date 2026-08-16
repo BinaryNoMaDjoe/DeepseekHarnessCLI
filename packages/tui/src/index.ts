@@ -71,6 +71,14 @@ export function startTui(options: StartTuiOptions): TuiInstance {
       });
     },
   });
+  // Forced settlement (DSH abort signals) must converge the modal: without
+  // this the answerer promise would hang and the prompt would stay forever.
+  const offCancel = options.approval.events.subscribe((event) => {
+    if (event.type !== "approval/cancelled") return;
+    store.clearApproval();
+    pending?.resolve({ action: "deny" });
+    pending = null;
+  });
 
   let exitCode = 0;
   const app = render(
@@ -91,6 +99,7 @@ export function startTui(options: StartTuiOptions): TuiInstance {
       onExitRequested: (code) => {
         exitCode = code;
         unsub();
+        offCancel();
         app.unmount();
       },
     }),
@@ -100,8 +109,7 @@ export function startTui(options: StartTuiOptions): TuiInstance {
   const dialogs: DialogHost = {
     open(request: DialogRequest): Promise<DialogResult> {
       return new Promise<DialogResult>((resolve) => {
-        store.dialogResolve = resolve;
-        store.openDialog(request);
+        store.openDialog(request, resolve);
       });
     },
   };

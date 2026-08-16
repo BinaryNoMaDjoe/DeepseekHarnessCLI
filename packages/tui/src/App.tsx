@@ -41,9 +41,11 @@ function AppBody(props: AppProps): React.JSX.Element {
   const width = Math.max(40, stdout?.columns ?? 80);
   const height = Math.max(12, stdout?.rows ?? 24);
 
+  const { onExitRequested } = props;
+
   useEffect(() => {
-    if (state.exited !== null) props.onExitRequested(state.exited.code);
-  });
+    if (state.exited !== null) onExitRequested(state.exited.code);
+  }, [state.exited, onExitRequested]);
 
   useEffect(() => {
     if (props.gitBadge === undefined) return;

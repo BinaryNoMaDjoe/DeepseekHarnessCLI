@@ -239,6 +239,12 @@ export function wrapText(text: string, width: number): string[] {
         out.push(current);
         current = word;
       }
+      // A single token wider than the column is hard-split instead of
+      // overflowing the layout (long URLs, compact JSON, no-space runs).
+      while (current.length > width) {
+        out.push(current.slice(0, width));
+        current = current.slice(width);
+      }
     }
     if (current !== "") out.push(current);
   }

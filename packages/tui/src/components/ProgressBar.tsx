@@ -16,7 +16,10 @@ export function ProgressBar({ ratio, width }: { ratio: number; width: number }):
   let rest = "";
   if (whole < width) {
     const remainder = clamped * width - whole;
-    const middle = BLOCKS[Math.floor(remainder * BLOCKS.length)]!;
+    // BLOCKS has 9 symbols representing 0/8..8/8; scale by 8, not 9, so a
+    // nearly-full cell renders the last partial block instead of █.
+    const middle =
+      BLOCKS[Math.min(BLOCKS.length - 1, Math.floor(remainder * (BLOCKS.length - 1)))]!;
     rest = middle + BLOCKS[0]!.repeat(width - whole - 1);
   }
   return (

@@ -189,6 +189,12 @@ function FieldsDialog({
   const field = req.fields[fieldIndex];
 
   useInput((input, key) => {
+    // An empty fields array is technically valid DialogRequest: guard the
+    // indexed access (noUncheckedIndexedAccess) instead of asserting.
+    if (field === undefined) {
+      if (key.escape || (key.ctrl && (input === "c" || input === "C"))) onResult(null);
+      return;
+    }
     if (key.escape || (key.ctrl && (input === "c" || input === "C"))) {
       onResult(null);
       return;

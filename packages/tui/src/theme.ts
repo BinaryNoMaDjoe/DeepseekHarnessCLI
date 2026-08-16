@@ -33,7 +33,6 @@ export interface ColorPalette {
   diffGutter: string;
   diffMeta: string;
   roleUser: string;
-  shellMode: string;
   agentRed: string;
   agentBlue: string;
   agentGreen: string;
@@ -111,7 +110,6 @@ const DARK: ColorPalette = {
   diffGutter: "#6E6E6E",
   diffMeta: "#9A9A9A",
   roleUser: "#FFFFFF",
-  shellMode: "#FFFFFF",
   agentRed: "#DC2626",
   agentBlue: "#2563EB",
   agentGreen: "#16A34A",
@@ -142,7 +140,6 @@ const LIGHT: ColorPalette = {
   diffGutter: "#666666",
   diffMeta: "#4A4A4A",
   roleUser: "#000000",
-  shellMode: "#000000",
   agentRed: "#B91C1C",
   agentBlue: "#1D4ED8",
   agentGreen: "#15803D",
@@ -303,13 +300,44 @@ export function validateThemeSpec(input: unknown): ThemeSpec | null {
   return null;
 }
 
+/** Chalk named colors accepted by legacy v1 themes. */
+const CHALK_NAMES = new Set([
+  "black",
+  "red",
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "gray",
+  "grey",
+  "blackBright",
+  "redBright",
+  "greenBright",
+  "yellowBright",
+  "blueBright",
+  "magentaBright",
+  "cyanBright",
+  "whiteBright",
+]);
+
 function toStyle(value: string): ChalkInstance {
   if (value.startsWith("#")) return chalk.hex(value);
+  if (CHALK_NAMES.has(value)) {
+    const named = (chalk as unknown as Record<string, ChalkInstance>)[value];
+    if (named !== undefined) return named;
+  }
   return chalk;
 }
 
 function bgStyle(value: string): ChalkInstance {
   if (value.startsWith("#")) return chalk.bgHex(value);
+  if (CHALK_NAMES.has(value)) {
+    const key = "bg" + value[0]!.toUpperCase() + value.slice(1);
+    const named = (chalk as unknown as Record<string, ChalkInstance>)[key];
+    if (named !== undefined) return named;
+  }
   return chalk;
 }
 
@@ -372,6 +400,7 @@ export interface DetectOptions {
     setRawMode(mode: boolean): void;
     resume(): void;
     on(event: string, listener: (chunk: Buffer) => void): unknown;
+    off?(event: string, listener: (chunk: Buffer) => void): unknown;
   };
   stdout?: { isTTY?: boolean; write(text: string): unknown };
 }
@@ -389,15 +418,19 @@ export async function detectTerminalScheme(
     const finish = (value: "dark" | "light" | null): void => {
       if (settled) return;
       settled = true;
-      // Keep the listener attached: terminals that answer AFTER our timeout
-      // would otherwise leak OSC bytes into Ink's input parser. Once
-      // settled the handler ignores everything (Ink attaches its own
-      // listener independently).
+      // Leave no listener or raw mode behind: Ink attaches its own input
+      // handling right after this probe resolves.
+      try {
+        stdin.off?.("data", onData);
+        stdin.setRawMode(false);
+      } catch {
+        // The terminal may already be torn down; the probe result stands.
+      }
       resolve(value);
     };
     let buffer = "";
     const onData = (chunk: Buffer): void => {
-      if (settled) return; // swallow late OSC responses
+      if (settled) return;
       const text = chunk.toString();
       // Responses may arrive split across chunks: accumulate a small buffer.
       buffer = (buffer + text).slice(-64);

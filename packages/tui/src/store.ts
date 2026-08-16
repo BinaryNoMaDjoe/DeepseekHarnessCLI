@@ -135,26 +135,43 @@ export class SessionStore {
       case "turn/start":
         this.set({ running: true, error: null });
         break;
-      case "turn/end":
-        this.set({ running: false, currentTool: null });
-        if (event.reason.kind === "error") {
-          this.set({ error: event.reason.error.code + ": " + event.reason.error.message });
-        }
+      case "turn/end": {
+        this.set({
+          running: false,
+          currentTool: null,
+          error:
+            event.reason.kind === "error"
+              ? event.reason.error.code + ": " + event.reason.error.message
+              : event.reason.kind === "blocked"
+                ? "blocked" + (event.reason.reason !== undefined ? ": " + event.reason.reason : "")
+                : this.state.error,
+        });
         this.finishStreaming();
+        break;
+      }
+      case "step/start":
+      case "step/end":
+        // Reserved for future rendering (step statistics); no UI state yet.
+        break;
+      case "agent/status":
+        // The REPL consumes agent/status for its state machine; the status
+        // bar's running flag is driven by turn/start|end.
         break;
       case "assistant/chunk":
         this.applyChunk(event.chunk);
         break;
       case "assistant/message": {
-        // Persist the reasoning buffer as a collapsible thinking block.
+        // Persist the reasoning buffer as a collapsible thinking block
+        // (finishStreaming does this); the message-level reasoning only
+        // matters when no chunks ever streamed (replayed logs).
         const messageReasoning = event.message.content
           .filter((block) => block.type === "reasoning")
           .map((block) => block.text)
           .join("\n");
-        const reasoning = this.state.streaming?.reasoning ?? "";
+        const hadStreaming = this.state.streaming !== null;
         this.finishStreaming();
-        if (reasoning !== "" || messageReasoning !== "") {
-          this.pushThinking(reasoning !== "" ? reasoning : messageReasoning);
+        if (!hadStreaming && messageReasoning !== "") {
+          this.pushThinking(messageReasoning);
         }
         if (event.usage !== undefined) {
           this.set({
@@ -217,11 +234,13 @@ export class SessionStore {
   /** Resolver paired with the open dialog (set by the dialog host). */
   dialogResolve: ((result: DialogResult) => void) | null = null;
 
-  openDialog(request: DialogRequest): void {
-    // Re-entry safety: settle any still-open dialog before replacing it,
-    // so no open() promise is ever stranded (commands are serialized, but
-    // a session switch can re-enter through a preserved dialog).
+  openDialog(request: DialogRequest, resolve: (result: DialogResult) => void): void {
+    // Re-entry safety: settle any still-open dialog (and ITS resolver)
+    // before replacing it, so no open() promise is ever stranded. The
+    // resolver is stored only after the guard ran — storing it first would
+    // make the guard settle the NEW promise instead of the old one.
     if (this.state.dialog !== null) this.resolveDialog(null);
+    this.dialogResolve = resolve;
     this.set({ dialog: request });
   }
 
@@ -294,6 +313,9 @@ export class SessionStore {
       });
     }
     this.set({ items, streaming: null });
+    // Persist reasoning even when no assistant/message follows: error,
+    // cancelled, and blocked turns must not silently drop it.
+    if (streaming.reasoning !== "") this.pushThinking(streaming.reasoning);
   }
 
   private pushToolCall(id: string, name: string, args: string): void {
@@ -308,22 +330,26 @@ export class SessionStore {
   }
 
   private setToolResult(id: string, ok: boolean, text: string): void {
-    // Exact id match first. DSH's tool/result carries no callId (the adapter
-    // emits an empty id), so fall back to LIFO pairing: the most recent
-    // unresolved call. Correct for sequential tool flows; parallel flows
-    // with the same tool are a documented limitation.
+    // Exact id match first, preferring UNSETTLED calls: a duplicate call id
+    // from an older turn must not be re-overwritten. DSH's tool/result
+    // carries no callId (the adapter emits an empty id), so fall back to
+    // LIFO pairing: the most recent unresolved call. Correct for sequential
+    // tool flows; parallel flows with the same tool are a documented
+    // limitation.
     const items = this.state.items.map((item) => {
       if (item.kind !== "assistant") return item;
-      const exact = item.toolCalls.find((existing) => existing.id === id);
-      if (exact !== undefined) {
-        return {
-          ...item,
-          toolCalls: item.toolCalls.map((existing) =>
-            existing.id === id ? { ...existing, result: { ok, text } } : existing,
-          ),
-        };
-      }
-      return item;
+      const exact = item.toolCalls.find(
+        (existing) => existing.id === id && existing.result === undefined,
+      );
+      if (exact === undefined) return item;
+      return {
+        ...item,
+        toolCalls: item.toolCalls.map((existing) =>
+          existing.id === id && existing.result === undefined
+            ? { ...existing, result: { ok, text } }
+            : existing,
+        ),
+      };
     });
     const exactHit = items.some(
       (item) =>
@@ -334,14 +360,27 @@ export class SessionStore {
       this.set({ items });
       return;
     }
-    // LIFO fallback: walk from the newest item backwards.
+    // With real call ids the exact match is authoritative: an unknown id
+    // must not LIFO-pair onto an unrelated pending call. The fallback only
+    // serves logs whose results lack a call id (the adapter emits "" for
+    // those), keeping sequential flows correct — parallel ambiguity stays
+    // a documented limitation.
+    if (id !== "") {
+      this.set({ items });
+      return;
+    }
+    // LIFO fallback: walk from the newest item backwards. Copy the toolCalls
+    // array before writing — the mapped items array shares element objects
+    // with the previous state, so in-place writes would corrupt it.
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
       if (item.kind !== "assistant") continue;
       for (let j = item.toolCalls.length - 1; j >= 0; j--) {
         const call = item.toolCalls[j]!;
         if (call.result !== undefined) continue;
-        item.toolCalls[j] = { ...call, result: { ok, text } };
+        const toolCalls = [...item.toolCalls];
+        toolCalls[j] = { ...call, result: { ok, text } };
+        items[i] = { ...item, toolCalls };
         this.set({ items });
         return;
       }
