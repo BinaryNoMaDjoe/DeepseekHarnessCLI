@@ -68,11 +68,20 @@ let pass = false;
 try {
   await waitFor((t) => t.includes("dsht"), 20000);
   term.write("run it\r");
-  await waitFor((t) => t.includes("escalate sandbox"), 45000);
+  // DSH words the escalation reason itself; also accept the bridge's
+  // fallback prompt so wording changes upstream cannot false-fail.
+  await waitFor(
+    (t) => t.includes("escalate sandbox") || t.includes("Allow the pwsh tool to run?"),
+    45000,
+  );
   console.log("[e2e-approval] approval modal appeared");
   term.write("y\r");
   await waitFor((t) => t.includes("mock reply"), 45000);
   console.log("[e2e-approval] approval granted, turn completed");
+  // The tool card must render the actual pwsh result text (the adapter
+  // translation is a critical path — an empty card must fail the run).
+  await waitFor((t) => t.includes("hello-from-pwsh"), 15000);
+  console.log("[e2e-approval] tool result text rendered in the card");
   term.write("/exit\r");
   await waitFor(() => exited, 15000);
   console.log("[e2e-approval] exited with code " + String(exitCode));

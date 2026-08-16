@@ -16,12 +16,19 @@ const hostEnv = Object.fromEntries(
 );
 
 function runDsh(args) {
-  const result = spawnSync(DSH_CMD, ["--profile", "tui", ...args], {
-    cwd: fileURLToPath(new URL("..", import.meta.url)),
-    env: { ...hostEnv, DSH_HOME, DSH_MOCK_LLM: "1" },
-    encoding: "utf8",
-    shell: true,
-  });
+  const base = ["--profile", "tui", ...args];
+  const result =
+    process.platform === "win32"
+      ? spawnSync("cmd.exe", ["/d", "/s", "/c", DSH_CMD, ...base], {
+          cwd: fileURLToPath(new URL("..", import.meta.url)),
+          env: { ...hostEnv, DSH_HOME, DSH_MOCK_LLM: "1" },
+          encoding: "utf8",
+        })
+      : spawnSync(DSH_CMD, base, {
+          cwd: fileURLToPath(new URL("..", import.meta.url)),
+          env: { ...hostEnv, DSH_HOME, DSH_MOCK_LLM: "1" },
+          encoding: "utf8",
+        });
   return result;
 }
 

@@ -86,8 +86,10 @@ try {
   await waitFor((text) => text.includes("mock reply: hello tui"), 60000);
   console.log("[e2e] reply rendered in the TUI");
   // Shell passthrough: !-prefixed input runs locally, not through the model.
+  // Assert the command echo prefix ($ ...) so input-box echo alone cannot
+  // satisfy the check.
   term.write("!echo dsht-shell-ok\r");
-  await waitFor((text) => text.includes("dsht-shell-ok"), 30000);
+  await waitFor((text) => text.includes("$ echo dsht-shell-ok"), 30000);
   console.log("[e2e] ! shell passthrough executed locally");
   // Short alias and status shortcut.
   term.write("/h\r");
@@ -96,6 +98,18 @@ try {
   term.write("/st\r");
   await waitFor((text) => text.includes("permission mode"), 20000);
   console.log("[e2e] /st alias rendered the status");
+  // /new regression coverage: it used to dispose the freshly attached
+  // handle (crashing with "Cannot read properties of undefined"). Pin the
+  // default model to the mock route first so the post-/new turn answers.
+  term.write("/model mock mock-v1\r");
+  await waitFor((text) => text.includes("default model set to mock/mock-v1"), 20000);
+  console.log("[e2e] /model saved the mock default");
+  term.write("/new\r");
+  await waitFor((text) => text.includes("new session:"), 20000);
+  console.log("[e2e] /new switched to a fresh session");
+  term.write("hello after new\r");
+  await waitFor((text) => text.includes("mock reply: hello after new"), 60000);
+  console.log("[e2e] reply rendered after /new");
   // /q quits through the exit alias.
   term.write("/q\r");
   await waitFor(() => exited, 15000);
