@@ -19,4 +19,16 @@ describe("forwardMockArgs", () => {
       env: { DSH_MOCK_LLM: "1" },
     });
   });
+
+  it("honors the --model=value form and a valueless --model", () => {
+    expect(forwardMockArgs(["--mock", "--model=mock-v2"])).toEqual({
+      args: ["--model=mock-v2", "--provider", "mock"],
+      env: { DSH_MOCK_LLM: "1" },
+    });
+    // A dangling --model carries no value: the mock default must be filled.
+    expect(forwardMockArgs(["--mock", "--model"])).toEqual({
+      args: ["--model", "--provider", "mock", "--model", "mock-v1"],
+      env: { DSH_MOCK_LLM: "1" },
+    });
+  });
 });

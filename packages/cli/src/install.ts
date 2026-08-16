@@ -104,11 +104,19 @@ export function installProfile(options: InstallOptions = {}): InstallResult {
 
   if (options.manifestOnly !== true) {
     const pnpm = options.pnpm ?? "pnpm";
-    const run = spawnSync(pnpm, ["install"], {
-      cwd: profileDir,
-      shell: process.platform === "win32",
-      stdio: "inherit",
-    });
+    // On Windows pnpm is a .cmd shim and cannot be spawned directly; route
+    // through cmd.exe instead of shell:true (spawn args + shell:true is the
+    // deprecated DEP0190 pattern).
+    const run =
+      process.platform === "win32"
+        ? spawnSync("cmd.exe", ["/d", "/s", "/c", pnpm, "install"], {
+            cwd: profileDir,
+            stdio: "inherit",
+          })
+        : spawnSync(pnpm, ["install"], {
+            cwd: profileDir,
+            stdio: "inherit",
+          });
     if (run.error !== undefined) {
       throw new Error("pnpm failed: " + run.error.message);
     }

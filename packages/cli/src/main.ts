@@ -78,12 +78,26 @@ export function forwardMockArgs(args: string[]): {
 } {
   if (!args.includes("--mock")) return { args };
   const rest = args.filter((arg) => arg !== "--mock");
-  const hasModel = rest.some((arg) => arg === "--model" || arg === "-m");
-  const hasProvider = rest.some((arg) => arg === "--provider");
+  const hasModel = hasExplicitValue(rest, ["--model", "-m"]);
+  const hasProvider = hasExplicitValue(rest, ["--provider"]);
   const filled = [
     ...rest,
     ...(hasProvider ? [] : ["--provider", "mock"]),
     ...(hasModel ? [] : ["--model", "mock-v1"]),
   ];
   return { args: filled, env: { DSH_MOCK_LLM: "1" } };
+}
+
+/** True when one of the flags carries a real value (`--model x` / `--model=x`). */
+function hasExplicitValue(rest: string[], flags: string[]): boolean {
+  for (let i = 0; i < rest.length; i++) {
+    const arg = rest[i]!;
+    if (flags.includes(arg)) {
+      const next = rest[i + 1];
+      return next !== undefined && !next.startsWith("-");
+    }
+    const eq = flags.find((flag) => flag.startsWith("--") && arg.startsWith(flag + "="));
+    if (eq !== undefined) return arg.length > eq.length + 1;
+  }
+  return false;
 }

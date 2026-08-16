@@ -32,11 +32,19 @@ export async function runDsht(options: RunOptions): Promise<number> {
     : undefined;
   const env =
     options.env === undefined ? scrubbed : { ...(scrubbed ?? process.env), ...options.env };
-  const child = spawn(bin, ["--profile", PROFILE_NAME, ...options.args], {
-    stdio: "inherit",
-    shell: process.platform === "win32",
-    env,
-  });
+  // On Windows dsh is a .cmd shim and cannot be spawned directly; route
+  // through cmd.exe instead of shell:true (spawn args + shell:true is the
+  // deprecated DEP0190 pattern).
+  const child =
+    process.platform === "win32"
+      ? spawn("cmd.exe", ["/d", "/s", "/c", bin, "--profile", PROFILE_NAME, ...options.args], {
+          stdio: "inherit",
+          env,
+        })
+      : spawn(bin, ["--profile", PROFILE_NAME, ...options.args], {
+          stdio: "inherit",
+          env,
+        });
   return await new Promise<number>((resolve, reject) => {
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 1));
