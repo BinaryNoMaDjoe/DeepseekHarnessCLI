@@ -17,10 +17,10 @@ function fakeAgent(followup: ReturnType<typeof vi.fn>): AgentHandle {
 function localText(events: SdkEvent[]): string {
   return events
     .filter(
-      (event): event is Extract<SdkEvent, { type: "assistant/chunk" }> =>
-        event.type === "assistant/chunk",
+      (event): event is Extract<SdkEvent, { type: "surface/local" }> =>
+        event.type === "surface/local",
     )
-    .map((event) => (event.chunk.type === "text" ? event.chunk.text : ""))
+    .map((event) => event.text)
     .join("");
 }
 
@@ -38,13 +38,13 @@ describe("createRepl", () => {
     expect(local.map((event) => event.type)).toEqual(["user/message"]);
 
     await repl.submit("/nope");
-    expect(local.map((event) => event.type)).toEqual(["user/message", "assistant/chunk"]);
+    expect(local.map((event) => event.type)).toEqual(["user/message", "surface/local"]);
 
     await repl.submit("/help");
     expect(local.map((event) => event.type)).toEqual([
       "user/message",
-      "assistant/chunk",
-      "assistant/chunk",
+      "surface/local",
+      "surface/local",
     ]);
   });
 

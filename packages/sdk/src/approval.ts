@@ -58,14 +58,23 @@ export interface ApprovalBrokerOptions {
 }
 
 export interface ApprovalBroker {
-  readonly events: Emitter<{ type: "approval/request"; request: ApprovalRequest }>;
+  readonly events: Emitter<
+    | { type: "approval/request"; request: ApprovalRequest }
+    | { type: "approval/cancelled"; request: ApprovalRequest }
+  >;
   answerer: Answerer;
   setAnswerer(answerer: Answerer): void;
-  /** Route a runtime request to the current answerer (serialized). */
-  request(request: ApprovalRequest): Promise<ApprovalDecision>;
+  /**
+   * Route a runtime request to the current answerer (serialized). An
+   * optional signal settles THIS request with deny — including while it is
+   * still queued behind another request — without touching the queue head.
+   */
+  request(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision>;
   /**
    * Settle the in-flight request with a decision from outside the answerer
-   * (abort signals, surface teardown). No-op when nothing is active.
+   * (abort signals, surface teardown). No-op when nothing is active. The
+   * surface learns about the forced settlement through the cancel event so
+   * it can converge its modal (abort must not leave a hanging prompt).
    */
   cancelCurrent(decision: ApprovalDecision): void;
 }
@@ -80,7 +89,10 @@ interface Pending {
  * order; fail-closed by default; answerer throws resolve to deny.
  */
 export function createApprovalBroker(options: ApprovalBrokerOptions = {}): ApprovalBroker {
-  const events = createEmitter<{ type: "approval/request"; request: ApprovalRequest }>();
+  const events = createEmitter<
+    | { type: "approval/request"; request: ApprovalRequest }
+    | { type: "approval/cancelled"; request: ApprovalRequest }
+  >();
   let pending: Pending | null = null;
   let tail: Promise<unknown> = Promise.resolve();
 
@@ -90,12 +102,28 @@ export function createApprovalBroker(options: ApprovalBrokerOptions = {}): Appro
     setAnswerer(answerer: Answerer): void {
       broker.answerer = answerer;
     },
-    request(request: ApprovalRequest): Promise<ApprovalDecision> {
+    request(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> {
       const settled = tail.then((): Promise<ApprovalDecision> => {
+        // A request aborted while queued never surfaces a prompt.
+        if (signal?.aborted) return Promise.resolve({ action: "deny" });
         events.emit({ type: "approval/request", request });
         return new Promise<ApprovalDecision>((resolve) => {
           pending = { request, resolve };
-          void broker.answerer.answer(request).then(resolve, () => resolve({ action: "deny" }));
+          const onAbort = (): void => {
+            // Only this request's own signal may settle it: a concurrent
+            // abort must never force-settle a different queue head.
+            if (pending?.request !== request) return;
+            pending = null;
+            events.emit({ type: "approval/cancelled", request });
+            resolve({ action: "deny" });
+          };
+          signal?.addEventListener("abort", onAbort, { once: true });
+          const finish = (decision: ApprovalDecision): void => {
+            signal?.removeEventListener("abort", onAbort);
+            if (pending?.request === request) pending = null;
+            resolve(decision);
+          };
+          void broker.answerer.answer(request).then(finish, () => finish({ action: "deny" }));
         });
       });
       tail = settled.catch(() => undefined);
@@ -105,6 +133,7 @@ export function createApprovalBroker(options: ApprovalBrokerOptions = {}): Appro
       if (pending === null) return;
       const current = pending;
       pending = null;
+      events.emit({ type: "approval/cancelled", request: current.request });
       current.resolve(decision);
     },
   };

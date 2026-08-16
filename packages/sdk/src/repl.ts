@@ -73,7 +73,10 @@ export function createRepl(options: ReplControllerOptions = {}): ReplController 
   let status: ReplStatus = { state: "idle" };
 
   const local = (text: string): void => {
-    options.emitLocal?.({ type: "assistant/chunk", chunk: { type: "text", text: text + "\n" } });
+    // Local command output is a transcript item, NOT a streamed assistant
+    // chunk: emitting assistant/chunk leaks it into the streaming buffer
+    // and prefixes the next real assistant message (contract: surface/local).
+    options.emitLocal?.({ type: "surface/local", text: text + "\n" });
   };
 
   const repl: ReplController = {
