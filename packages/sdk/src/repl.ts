@@ -131,11 +131,15 @@ export function createRepl(options: ReplControllerOptions = {}): ReplController 
       local("unknown command: /" + name + " — try /help");
       return;
     }
-    await command.run(args, {
-      agent: options.agentProvider?.() ?? null,
-      repl,
-      emitLocal: (text: string) => local(text),
-    });
+    try {
+      await command.run(args, {
+        agent: options.agentProvider?.() ?? null,
+        repl,
+        emitLocal: (text: string) => local(text),
+      });
+    } catch (error) {
+      local("command failed: " + (error instanceof Error ? error.message : String(error)));
+    }
   }
 
   const builtins: SlashCommand[] = [

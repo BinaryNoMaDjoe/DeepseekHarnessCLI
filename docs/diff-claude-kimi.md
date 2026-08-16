@@ -69,24 +69,24 @@
 
 ## 5. 扩展面与自定义
 
-| 能力         | Claude Code                  | Kimi Code CLI         | DSHT                                              | 说明                  |
-| ------------ | ---------------------------- | --------------------- | ------------------------------------------------- | --------------------- |
-| 斜杠命令     | ✅ 内置 + 自定义             | ✅ 内置 + skills 注册 | ✅ 内置 + SDK 注册 API                            | 见 manual             |
-| skills       | ✅ SKILL.md                  | ✅ 内置 skills/klips  | ✅ 复用 DSH skill 系统                            | 目录约定待接 TUI      |
-| hooks        | ✅ 生命周期 hooks            | ✅ hooks 引擎         | 🟡 DSH cordis 事件面未包装                        | 路线图                |
-| 插件市场     | ✅ plugins                   | ✅ plugin marketplace | 🟡 DSH profile 插件体系（cordis）                 | 结构更底层，无市场 UI |
-| **主题系统** | ✅ 内置主题 + 自定义（JSON） | ✅ 主题 + 自定义      | ✅ **deepseek-dark/deepseek-light + 自定义 JSON** | 详见下节              |
+| 能力         | Claude Code                  | Kimi Code CLI         | DSHT                                                        | 说明                  |
+| ------------ | ---------------------------- | --------------------- | ----------------------------------------------------------- | --------------------- |
+| 斜杠命令     | ✅ 内置 + 自定义             | ✅ 内置 + skills 注册 | ✅ 内置 + SDK 注册 API                                      | 见 manual             |
+| skills       | ✅ SKILL.md                  | ✅ 内置 skills/klips  | ✅ 复用 DSH skill 系统                                      | 目录约定待接 TUI      |
+| hooks        | ✅ 生命周期 hooks            | ✅ hooks 引擎         | 🟡 DSH cordis 事件面未包装                                  | 路线图                |
+| 插件市场     | ✅ plugins                   | ✅ plugin marketplace | 🟡 DSH profile 插件体系（cordis）                           | 结构更底层，无市场 UI |
+| **主题系统** | ✅ 内置主题 + 自定义（JSON） | ✅ 主题 + 自定义      | ✅ **auto + 深浅 + 色弱 4 主题 + 自定义 JSON（base+覆盖）** | 详见下节              |
 
 ## 6. 主题系统对比
 
-| 维度       | Claude Code        | Kimi Code CLI | DSHT                                                                                         |
-| ---------- | ------------------ | ------------- | -------------------------------------------------------------------------------------------- |
-| 内置主题   | ✅（多套 + 亮/暗） | ✅            | ✅ 2 套基础（深浅）                                                                          |
-| 设计语言   | Anthropic 品牌     | Moonshot 品牌 | **DSH：克制、高级、高对比度**（黑白文字主体 + 语义色点缀：diff 绿/红、状态色、提示符强调色） |
-| 自定义格式 | JSON 主题文件      | JSON/配置     | JSON（`$DSH_HOME/themes/<name>.json`，chalk 颜色名或 #hex）                                  |
-| 切换方式   | /theme + 设置      | /theme        | `/theme`、`--theme`、`DSH_TUI_THEME`、`tui.json` 持久化                                      |
-| 校验与回退 | 内置               | 内置          | 严格校验，非法主题回退默认（不崩溃）                                                         |
-| 实时生效   | ✅                 | ✅            | 🟡 持久化后新会话生效（同 Kimi 行为）                                                        |
+| 维度       | Claude Code               | Kimi Code CLI | DSHT                                                                                         |
+| ---------- | ------------------------- | ------------- | -------------------------------------------------------------------------------------------- |
+| 内置主题   | ✅（多套 + 亮/暗 + 色弱） | ✅            | ✅ auto + 深浅 4 套（含色弱 daltonized）                                                     |
+| 设计语言   | Anthropic 品牌            | Moonshot 品牌 | **DSH：克制、高级、高对比度**（黑白文字主体 + 语义色点缀：diff 绿/红、状态色、提示符强调色） |
+| 自定义格式 | JSON 主题文件             | JSON/配置     | JSON（`$DSH_HOME/themes/<name>.json`，chalk 颜色名或 #hex）                                  |
+| 切换方式   | /theme + 设置             | /theme        | `/theme`、`--theme`、`DSH_TUI_THEME`、`tui.json` 持久化                                      |
+| 校验与回退 | 内置                      | 内置          | 严格校验，非法主题回退默认（不崩溃）                                                         |
+| 实时生效   | ✅                        | ✅            | 🟡 持久化后新会话生效（同 Kimi 行为）                                                        |
 
 ## 7. 模型与配置
 

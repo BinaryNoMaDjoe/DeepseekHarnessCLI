@@ -18,7 +18,7 @@ export function MessageView({
   width,
   sessionRunning,
   expandedCalls,
-  expandedThinking: _expandedThinking,
+  expandedThinking,
 }: MessageViewProps): React.JSX.Element {
   const theme = useTheme();
   if (item.kind === "user") {
@@ -39,12 +39,25 @@ export function MessageView({
     );
   }
   if (item.kind === "thinking") {
+    const lines = item.text.split("\n");
+    const expanded = expandedThinking[item.id] ?? false;
+    const preview = expanded ? lines : lines.slice(0, 2);
+    const more = lines.length - preview.length;
     return (
       <Box flexDirection="column">
-        <Text>
-          {theme.muted("● ")}
-          {theme.italic(item.text)}
-        </Text>
+        {preview.map((line, index) => (
+          <Text key={index}>
+            {theme.muted("● ")}
+            {theme.italic(line)}
+          </Text>
+        ))}
+        {more > 0 ? (
+          <Text>
+            {theme.muted(
+              "  " + (expanded ? "ctrl+o collapse" : "ctrl+o expand (" + more + " more lines)"),
+            )}
+          </Text>
+        ) : null}
       </Box>
     );
   }

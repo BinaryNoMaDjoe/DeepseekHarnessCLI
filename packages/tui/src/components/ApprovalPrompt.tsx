@@ -12,7 +12,11 @@ export interface ApprovalPromptProps {
  * Modal approval prompt, aligned with the dialog spec: top/bottom
  * borders, bold title, muted hint line, ❯ pointer for question options.
  */
-export function ApprovalPrompt({ request, onDecide }: ApprovalPromptProps): React.JSX.Element {
+export function ApprovalPrompt({
+  request,
+  onDecide,
+  width = 80,
+}: ApprovalPromptProps & { width?: number }): React.JSX.Element {
   const theme = useTheme();
   const [selected, setSelected] = useState(0);
   const [toggled, setToggled] = useState<Set<string>>(new Set());
@@ -54,9 +58,10 @@ export function ApprovalPrompt({ request, onDecide }: ApprovalPromptProps): Reac
       ? "↑↓ navigate · Space toggle · Enter confirm · Esc cancel"
       : "y allow once · a allow always · n deny · Esc deny";
 
+  const ruleWidth = Math.max(20, width - 2);
   return (
     <Box flexDirection="column">
-      <Text>{theme.border("─".repeat(80))}</Text>
+      <Text>{theme.border("─".repeat(ruleWidth))}</Text>
       <Text>{theme.strong(" " + title)}</Text>
       <Text>{theme.muted(" " + hint)}</Text>
       {options.map((option, index) => {
@@ -77,7 +82,7 @@ export function ApprovalPrompt({ request, onDecide }: ApprovalPromptProps): Reac
           </Text>
         );
       })}
-      <Text>{theme.border("─".repeat(80))}</Text>
+      <Text>{theme.border("─".repeat(ruleWidth))}</Text>
     </Box>
   );
 }

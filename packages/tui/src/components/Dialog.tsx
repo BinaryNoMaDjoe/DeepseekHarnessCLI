@@ -14,23 +14,27 @@ const PAGE_SIZE = 12;
 export function Dialog({
   request,
   onResult,
+  width = 80,
 }: {
   request: DialogRequest;
   onResult(result: DialogResult): void;
+  width?: number;
 }): React.JSX.Element {
   return request.kind === "list" ? (
-    <ListDialog request={request} onResult={onResult} />
+    <ListDialog request={request} onResult={onResult} width={width} />
   ) : (
-    <FieldsDialog request={request} onResult={onResult} />
+    <FieldsDialog request={request} onResult={onResult} width={width} />
   );
 }
 
 function ListDialog({
   request: req,
   onResult,
+  width,
 }: {
   request: Extract<DialogRequest, { kind: "list" }>;
   onResult(result: DialogResult): void;
+  width: number;
 }): React.JSX.Element {
   const theme = useTheme();
   const [query, setQuery] = useState("");
@@ -64,7 +68,7 @@ function ListDialog({
       return;
     }
     if (key.downArrow) {
-      setCursor((current) => Math.min(visible.length - 1, current + 1));
+      setCursor((current) => Math.min(Math.max(0, visible.length - 1), current + 1));
       return;
     }
     if (key.pageDown || (input === " " && req.multi)) {
@@ -96,13 +100,13 @@ function ListDialog({
       if (selected !== undefined) onResult([selected.id]);
       return;
     }
-    if (key.backspace || (key.delete && input === "")) {
+    if (req.searchable && (key.backspace || (key.delete && input === ""))) {
       setQuery((current) => current.slice(0, -1));
       setPage(0);
       setCursor(0);
       return;
     }
-    if (input !== "" && !key.ctrl && !key.meta) {
+    if (req.searchable && input !== "" && !key.ctrl && !key.meta) {
       setQuery((current) => current + input);
       setPage(0);
       setCursor(0);
@@ -117,9 +121,10 @@ function ListDialog({
         ? "↑↓ navigate · Space toggle · Enter confirm · Esc cancel"
         : "↑↓ navigate · Enter select · Esc cancel");
 
+  const ruleWidth = Math.max(20, width - 2);
   return (
     <Box flexDirection="column">
-      <Text>{theme.border("─".repeat(80))}</Text>
+      <Text>{theme.border("─".repeat(ruleWidth))}</Text>
       <Text>
         {theme.strong(" " + req.title)}
         {req.searchable && query === "" ? theme.muted("  (type to search)") : ""}
@@ -157,28 +162,49 @@ function ListDialog({
         );
       })}
       <Text> </Text>
-      <Text>
-        {query === ""
-          ? theme.muted(" ▼ " + Math.max(0, filtered.length - (safePage + 1) * PAGE_SIZE) + " more")
-          : theme.muted(" " + filtered.length + " matches")}
-      </Text>
-      <Text>{theme.border("─".repeat(80))}</Text>
+      {filtered.length === 0 ? (
+        <Text>{theme.muted(" No matches")}</Text>
+      ) : (
+        <Text>
+          {query === ""
+            ? theme.muted(
+                " ▼ " + Math.max(0, filtered.length - (safePage + 1) * PAGE_SIZE) + " more",
+              )
+            : theme.muted(" " + filtered.length + " matches")}
+        </Text>
+      )}
+      <Text>{theme.border("─".repeat(ruleWidth))}</Text>
     </Box>
   );
+}
+
+/** First field whose value is empty/whitespace, or null when all filled. */
+export function firstEmptyField(
+  fields: { key: string; label: string }[],
+  values: Record<string, string>,
+): { key: string; label: string } | null {
+  for (const field of fields) {
+    const value = (values[field.key] ?? "").trim();
+    if (value === "") return field;
+  }
+  return null;
 }
 
 function FieldsDialog({
   request: req,
   onResult,
+  width,
 }: {
   request: Extract<DialogRequest, { kind: "fields" }>;
   onResult(result: DialogResult): void;
+  width: number;
 }): React.JSX.Element {
   const theme = useTheme();
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(req.fields.map((field) => [field.key, field.value])),
   );
   const [fieldIndex, setFieldIndex] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const field = req.fields[fieldIndex];
 
@@ -188,12 +214,9 @@ function FieldsDialog({
       return;
     }
     if (key.tab || key.upArrow || key.downArrow) {
+      const backward = (key.tab && key.shift) || key.upArrow;
       setFieldIndex(
-        (current) =>
-          (current +
-            (key.tab && input === "Z" ? -1 : key.tab ? 1 : key.upArrow ? -1 : 1) +
-            req.fields.length) %
-          req.fields.length,
+        (current) => (current + (backward ? -1 : 1) + req.fields.length) % req.fields.length,
       );
       return;
     }
@@ -201,6 +224,12 @@ function FieldsDialog({
       if (fieldIndex < req.fields.length - 1) {
         setFieldIndex((current) => current + 1);
       } else {
+        const empty = firstEmptyField(req.fields, values);
+        if (empty !== null) {
+          setError(empty.label + " is required");
+          setFieldIndex(req.fields.findIndex((field) => field.key === empty.key));
+          return;
+        }
         onResult(values);
       }
       return;
@@ -226,12 +255,14 @@ function FieldsDialog({
       ? "Tab/↑↓ field · Enter next · Esc cancel"
       : "Tab/↑↓ field · Enter submit · Esc cancel");
 
+  const ruleWidth = Math.max(20, width - 2);
   return (
     <Box flexDirection="column">
-      <Text>{theme.border("─".repeat(80))}</Text>
+      <Text>{theme.border("─".repeat(ruleWidth))}</Text>
       <Text>{theme.strong(" " + req.title)}</Text>
       <Text>{theme.muted(" " + hint)}</Text>
       <Text> </Text>
+      {error !== null ? <Text>{theme.error(" " + error)}</Text> : null}
       {req.fields.map((f, index) => (
         <Text key={f.key}>
           {index === fieldIndex ? theme.primary("❯ ") : "  "}
@@ -242,7 +273,7 @@ function FieldsDialog({
         </Text>
       ))}
       <Text> </Text>
-      <Text>{theme.border("─".repeat(80))}</Text>
+      <Text>{theme.border("─".repeat(ruleWidth))}</Text>
     </Box>
   );
 }

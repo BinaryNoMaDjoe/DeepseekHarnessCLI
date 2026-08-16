@@ -108,7 +108,13 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
       name: "sessions",
       description: "pick a persisted session (resumes it)",
       async run(_args, context) {
-        const sessions = await deps.adapter.listSessions(undefined, 100);
+        let sessions;
+        try {
+          sessions = await deps.adapter.listSessions(undefined, 100);
+        } catch (error) {
+          context.emitLocal(error instanceof Error ? error.message : String(error));
+          return;
+        }
         if (sessions.length === 0) {
           context.emitLocal("no persisted sessions");
           return;
@@ -130,11 +136,13 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
           return;
         }
         const id = selected[0]!;
-        const previous = deps.client.current;
-        await previous?.dispose?.();
         try {
+          // Attach the new session FIRST (failure keeps the old one alive),
+          // then dispose the old handle; late old-session events are gated
+          // by the adapter's session filter.
           const handle = await deps.client.resumeSession(id);
           (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          await deps.client.current?.dispose?.();
           context.emitLocal("resumed " + id);
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));
@@ -151,12 +159,9 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
           return;
         }
         try {
-          const previous = deps.client.current;
-          // Dispose the old handle first: its live events must not leak into
-          // the new session's transcript (store resets on session/ready).
-          await previous?.dispose?.();
           const handle = await deps.client.resumeSession(id);
           (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          await deps.client.current?.dispose?.();
           context.emitLocal("resumed " + id);
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));
@@ -168,10 +173,9 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
       description: "start a fresh session (disposes the current one)",
       async run(_args, context) {
         try {
-          const previous = deps.client.current;
-          await previous?.dispose?.();
           const handle = await deps.client.createSession();
           (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          await deps.client.current?.dispose?.();
           context.emitLocal("new session: " + handle.sessionId.slice(0, 12));
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));
@@ -230,13 +234,20 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
           return;
         }
         const current = deps.themes.current();
+        let entries;
+        try {
+          entries = deps.themes.available();
+        } catch (error) {
+          context.emitLocal(error instanceof Error ? error.message : String(error));
+          return;
+        }
         const selected = await deps.dialogs().open({
           kind: "list",
           id: "theme-dialog",
           title: "Select a theme",
           searchable: false,
           multi: false,
-          items: deps.themes.available().map((entry) => ({
+          items: entries.map((entry) => ({
             id: entry.name,
             label: entry.displayName,
             detail: entry.mode,

@@ -17,7 +17,8 @@ export interface AppProps {
   fallbackModel?: ModelSelection;
   permissionMode: string;
   theme: ThemeInstance;
-  gitBadge: string | null;
+  /** Deferred git badge: resolves asynchronously after first paint. */
+  gitBadge?: Promise<string | null>;
   onDecideApproval(decision: ApprovalDecision): void;
   onExitRequested(code: number): void;
 }
@@ -44,9 +45,23 @@ function AppBody(props: AppProps): React.JSX.Element {
     if (state.exited !== null) props.onExitRequested(state.exited.code);
   });
 
-  // Ctrl+O: expand/collapse the most recent finished tool call.
+  useEffect(() => {
+    if (props.gitBadge === undefined) return;
+    let alive = true;
+    void props.gitBadge.then((badge) => {
+      if (alive) props.store.handle({ type: "surface/git", badge });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [props.gitBadge, props.store]);
+
+  // Ctrl+O: expand/collapse the most recent finished tool call (or the
+  // latest thinking block when no settled tool call exists). Gated behind
+  // modals so it never toggles content the user cannot see.
   useInput((input, key) => {
     if (!key.ctrl || (input !== "o" && input !== "O")) return;
+    if (state.dialog !== null || state.approval !== null) return;
     const items = state.items;
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
@@ -57,6 +72,13 @@ function AppBody(props: AppProps): React.JSX.Element {
           props.store.toggleCall(call.id);
           return;
         }
+      }
+    }
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      if (item.kind === "thinking") {
+        props.store.toggleThinking(item.id);
+        return;
       }
     }
   });
@@ -79,7 +101,7 @@ function AppBody(props: AppProps): React.JSX.Element {
         currentTool={state.currentTool}
         planActive={state.planActive}
         todo={todo}
-        gitBadge={props.gitBadge}
+        gitBadge={state.gitBadge}
       />
       <Box flexDirection="column" flexGrow={1}>
         {state.planActive ? (
@@ -106,15 +128,20 @@ function AppBody(props: AppProps): React.JSX.Element {
           </Text>
         ) : null}
       </Box>
-      {state.dialog !== null ? (
-        <Dialog request={state.dialog} onResult={(result) => props.store.resolveDialog(result)} />
-      ) : state.approval !== null ? (
-        <ApprovalPrompt request={state.approval} onDecide={props.onDecideApproval} />
+      {state.approval !== null ? (
+        // Approvals gate a running turn and must never hide behind a
+        // user-initiated dialog: they take modal priority.
+        <ApprovalPrompt request={state.approval} onDecide={props.onDecideApproval} width={width} />
+      ) : state.dialog !== null ? (
+        <Dialog
+          request={state.dialog}
+          onResult={(result) => props.store.resolveDialog(result)}
+          width={width}
+        />
       ) : (
         <InputBox
           history={props.repl.history}
           disabled={false}
-          suspended={false}
           onSubmit={(text) => void props.repl.submit(text)}
           onCancel={() => void props.repl.cancel()}
           onExit={() => props.repl.exit(0)}

@@ -72,6 +72,13 @@ try {
   console.log("[e2e] /theme dialog listed the built-in themes");
   term.write("\x1b");
   await waitFor((text) => text.includes("cancelled"), 20000);
+  console.log("[e2e] Esc cancelled the dialog");
+  // Selection path: open again and confirm the first entry (auto).
+  term.write("/theme\r");
+  await waitFor((text) => text.includes("Select a theme"), 20000);
+  term.write("\r");
+  await waitFor((text) => text.includes("theme set to auto"), 20000);
+  console.log("[e2e] Enter selected a theme from the dialog");
   term.write("/theme deepseek-light\r");
   await waitFor((text) => text.includes("theme set to deepseek-light"), 20000);
   console.log("[e2e] theme switch persisted");

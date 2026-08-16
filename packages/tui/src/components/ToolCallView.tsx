@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { diffWords, looksLikeDiff, parseDiff, type DiffLine } from "../diff.js";
+import { looksLikeDiff, pairDiffRows, parseDiff, type PairedDiffRow } from "../diff.js";
 import { useTheme } from "../theme-context.js";
 import { Spinner } from "./Spinner.js";
 import { StatusIcon } from "./StatusIcon.js";
@@ -88,7 +88,7 @@ function ResultBody({
   const theme = useTheme();
   const limit = preview ? PREVIEW_LINES : EXPANDED_LINES;
   if (looksLikeDiff(text)) {
-    const rows = pairDiff(parseDiff(text)).slice(0, limit);
+    const rows = pairDiffRows(parseDiff(text)).slice(0, limit);
     return (
       <Box flexDirection="column" marginLeft={2}>
         {rows.map((row, index) => (
@@ -122,7 +122,7 @@ function ResultBody({
  * One diff row: context lines plain; paired del/add lines render with
  * line-level backgrounds and bold changed words (Claude-style).
  */
-function DiffRow({ row }: { row: DiffRowData }): React.JSX.Element {
+function DiffRow({ row }: { row: PairedDiffRow }): React.JSX.Element {
   const theme = useTheme();
   if (row.kind === "context") {
     return (
@@ -165,49 +165,22 @@ function DiffRow({ row }: { row: DiffRowData }): React.JSX.Element {
   );
 }
 
-type DiffRowData =
-  | { kind: "context"; text: string; words: never[] }
-  | { kind: "del" | "add"; text: string; words: { kind: "add" | "del" | "same"; text: string }[] }
-  | { kind: "meta"; text: string; words: never[] };
-
-/** Pair consecutive del/add lines and compute their word-level changes. */
-function pairDiff(rows: DiffLine[]): DiffRowData[] {
-  const out: DiffRowData[] = [];
-  let i = 0;
-  while (i < rows.length) {
-    const row = rows[i]!;
-    if (row.kind === "del" && rows[i + 1]?.kind === "add") {
-      const oldLine = row.text;
-      const newLine = rows[i + 1]!.text;
-      const words = diffWords(oldLine, newLine);
-      out.push({ kind: "del", text: oldLine, words });
-      out.push({ kind: "add", text: newLine, words });
-      i += 2;
-      continue;
-    }
-    out.push({
-      kind: row.kind === "context" ? "context" : row.kind,
-      text: row.text,
-      words: [],
-    });
-    i += 1;
-  }
-  return out;
-}
-
 function summarizeArgs(raw: string, max: number): string {
   let text = raw.trim();
   if (text === "") return "";
   try {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    text = Object.entries(parsed)
-      .slice(0, 4)
-      .map(([key, value]) => {
-        const shown = typeof value === "string" ? value : JSON.stringify(value);
-        return key + "=" + shown;
-      })
-      .join("  ");
-    if (Object.keys(parsed).length > 4) text += " …";
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      const record = parsed as Record<string, unknown>;
+      text = Object.entries(record)
+        .slice(0, 4)
+        .map(([key, value]) => {
+          const shown = typeof value === "string" ? value : JSON.stringify(value);
+          return key + "=" + shown;
+        })
+        .join("  ");
+      if (Object.keys(record).length > 4) text += " …";
+    }
   } catch {
     // Not JSON: show the raw string.
   }

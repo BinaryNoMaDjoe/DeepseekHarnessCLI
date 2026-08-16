@@ -81,7 +81,11 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
   applyMockLlm(ctx, { enabled: config.mockLlm });
 
   const services = c as unknown as DshAdapterServices;
-  const forward = (event: SdkEvent): void => {
+  // Gate live events by session: once a switch attaches the new session,
+  // late events from the old (not-yet-disposed) agent must not leak into
+  // the new transcript.
+  const forward = (sessionId: string, event: SdkEvent): void => {
+    if (adapter.current()?.sessionId !== sessionId) return;
     client.events.emit(event);
   };
   const adapter = createDshAdapter(services, forward);
@@ -126,11 +130,14 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     return;
   }
 
-  // interactive
+  // interactive: start the git badge immediately and run terminal-scheme
+  // probing in parallel; only the probe may block the first paint, and the
+  // badge promise stays pending for the TUI to resolve asynchronously.
   const themeName = startup.theme ?? themes.current();
+  const badgePromise = gitBadge(process.cwd());
+  const scheme = themeName === "auto" ? await detectTerminalScheme() : null;
   let themeSpec: import("@deepseek-harness/tui").ThemeSpec | undefined; // eslint-disable-line @typescript-eslint/consistent-type-imports -- local inline type
   if (themeName === "auto") {
-    const scheme = await detectTerminalScheme();
     themeSpec = scheme === "light" ? DEEPSEEK_LIGHT : DEEPSEEK_DARK;
   } else {
     themeSpec = themes.load(themeName) ?? undefined;
@@ -143,7 +150,7 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     fallbackModel: modelService.currentSelection(),
     permissionMode,
     themeSpec,
-    gitBadge: await gitBadge(process.cwd()),
+    gitBadge: badgePromise,
   });
 
   const commands = buildCommands({
@@ -196,6 +203,7 @@ async function attachInitial(
     return;
   }
 
+  let resumeFailed = false;
   let target = startup.resume;
   if (target === null && startup.useContinue) {
     // DSH's listSessions is deterministic newest-first (audit §3.3), so the
@@ -209,10 +217,9 @@ async function attachInitial(
       replay(await client.resumeSession(target));
       return;
     } catch {
-      client.events.emit({
-        type: "surface/local",
-        text: "resume failed — starting a fresh session",
-      });
+      // Fall through to a fresh session; the notice is emitted AFTER the
+      // new attach so the store reset cannot erase it (M9).
+      resumeFailed = true;
     }
   }
   replay(
@@ -221,6 +228,12 @@ async function attachInitial(
       provider: startup.provider ?? undefined,
     }),
   );
+  if (resumeFailed) {
+    client.events.emit({
+      type: "surface/local",
+      text: "resume failed — starting a fresh session",
+    });
+  }
 }
 /** y/n/a approval answerer over stdin for headless --approval ask runs. */
 function createStdinAnswerer(): Answerer {

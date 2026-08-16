@@ -141,6 +141,37 @@ export function parseDiff(text: string): DiffLine[] {
   return rows;
 }
 
+/** A rendered diff row: context lines plain; del/add rows carry word spans. */
+export type PairedDiffRow =
+  | { kind: "context"; text: string; words: never[] }
+  | { kind: "del" | "add"; text: string; words: WordSegment[] };
+
+/**
+ * Pair consecutive del/add lines and compute their intra-line word changes
+ * so the renderer can bold only the changed words (Claude-style).
+ */
+export function pairDiffRows(rows: DiffLine[]): PairedDiffRow[] {
+  const out: PairedDiffRow[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i]!;
+    if (row.kind === "del" && rows[i + 1]?.kind === "add") {
+      const words = diffWords(row.text, rows[i + 1]!.text);
+      out.push({ kind: "del", text: row.text, words });
+      out.push({ kind: "add", text: rows[i + 1]!.text, words });
+      i += 2;
+      continue;
+    }
+    out.push({
+      kind: row.kind === "context" ? "context" : row.kind,
+      text: row.text,
+      words: [],
+    });
+    i += 1;
+  }
+  return out;
+}
+
 /** True when the text looks like a unified diff at a glance. */
 export function looksLikeDiff(text: string): boolean {
   const head = text.split("\n").slice(0, 6);
@@ -151,9 +182,20 @@ export function looksLikeDiff(text: string): boolean {
  * Intra-line word diff: split both lines into words and run the same LCS
  * over word tokens. Used to bold the changed words inside a replaced line.
  */
+const WORD_DIFF_BUDGET = 100_000;
+
 export function diffWords(oldLine: string, newLine: string): WordSegment[] {
   const oldWords = oldLine.split(/(\s+)/);
   const newWords = newLine.split(/(\s+)/);
+  // Quadratic word LCS can freeze the render thread on huge single lines
+  // (minified JSON in a diff); beyond the budget fall back to a full
+  // replace (still correct, linear).
+  if (oldWords.length * newWords.length > WORD_DIFF_BUDGET) {
+    return [
+      { kind: "del", text: oldLine },
+      { kind: "add", text: newLine },
+    ];
+  }
   const ops = lcsOps(oldWords, newWords);
   const out: WordSegment[] = [];
   let ai = 0;

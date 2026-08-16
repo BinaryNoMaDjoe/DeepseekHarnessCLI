@@ -23,8 +23,8 @@ export interface StartTuiOptions {
   themeSpec?: ThemeSpec;
   /** Pre-built instance (themeSpec is ignored when set). */
   themeInstance?: ThemeInstance;
-  /** Git branch badge for the footer (computed by the bundle). */
-  gitBadge?: string | null;
+  /** Deferred git badge for the footer (computed by the bundle). */
+  gitBadge?: Promise<string | null> | null;
 }
 
 /** Host for modal dialogs: commands await user selection through this. */
@@ -76,7 +76,7 @@ export function startTui(options: StartTuiOptions): TuiInstance {
       repl,
       fallbackModel: options.fallbackModel,
       permissionMode: options.permissionMode,
-      gitBadge: options.gitBadge ?? null,
+      gitBadge: options.gitBadge ?? undefined,
       theme:
         options.themeInstance ??
         (options.themeSpec !== undefined ? buildTheme(options.themeSpec) : DEFAULT_THEME),

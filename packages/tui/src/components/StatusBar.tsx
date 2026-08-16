@@ -55,7 +55,7 @@ export function StatusBar(props: StatusBarProps): React.JSX.Element {
     .join(theme.muted(" · "));
 
   const tip = TIPS[Math.floor((tick * 1000) / TIP_INTERVAL_MS) % TIPS.length]!;
-  const usage = props.tokens !== null ? formatTokens(props.tokens) : null;
+  const usage = props.tokens !== null ? contextRatio(props.tokens) : null;
 
   return (
     <Box flexDirection="column">
@@ -78,11 +78,7 @@ export function StatusBar(props: StatusBarProps): React.JSX.Element {
       <Box justifyContent="space-between">
         <Text>
           {theme.muted("context")}{" "}
-          {usage !== null ? (
-            <ProgressBar ratio={Math.min(1, usage.ratio)} width={16} />
-          ) : (
-            theme.muted("—")
-          )}
+          {usage !== null ? <ProgressBar ratio={usage} width={16} /> : theme.muted("—")}
         </Text>
         <Text>{theme.muted(tip)}</Text>
       </Box>
@@ -90,9 +86,8 @@ export function StatusBar(props: StatusBarProps): React.JSX.Element {
   );
 }
 
-function formatTokens(tokens: { input: number; output: number }): { ratio: number; text: string } {
+function contextRatio(tokens: { input: number; output: number }): number {
   // Ratio approximates context pressure; a precise context window arrives
   // with the token-meter integration on the roadmap.
-  const ratio = Math.min(1, tokens.input / 200_000);
-  return { ratio, text: "tok " + tokens.input + "↑" + tokens.output + "↓" };
+  return Math.min(1, tokens.input / 200_000);
 }

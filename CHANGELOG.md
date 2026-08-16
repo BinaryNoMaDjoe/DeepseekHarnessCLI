@@ -13,7 +13,7 @@
 - thinking 块独立渲染（可折叠预留）；双行 footer（状态行 + context 行 + 轮换快捷键提示 + git 徽标）。
 - 对话框框架（Kimi DESIGN.md 规范：顶/底单边框、hint 行、❯ 指针、← current、搜索行、
   滚动指示）；/sessions /theme /model 对话框化；审批弹窗对齐规范；多字段输入对话框。
-- shimmer spinner（双色帧动画）、八分之一精度进度条、StatusIcon/Byline 组件。
+- shimmer spinner（双色帧动画）、八分之一精度进度条、StatusIcon 组件。
 - 测试：TUI 26 全绿；PTY e2e 覆盖 /theme 对话框流程；demo-frame 抓帧更新。
 
 ## 0.2.0 (2026-08-16)

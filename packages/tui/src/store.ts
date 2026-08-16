@@ -63,6 +63,8 @@ export interface SessionUiState {
   expandedThinking: Record<number, boolean>;
   /** Open modal dialog (searchable list or multi-field input). */
   dialog: DialogRequest | null;
+  /** Footer git badge (arrives asynchronously after startup). */
+  gitBadge: string | null;
 }
 
 const initial: SessionUiState = {
@@ -81,6 +83,7 @@ const initial: SessionUiState = {
   expandedCalls: {},
   expandedThinking: {},
   dialog: null,
+  gitBadge: null,
 };
 
 export class SessionStore {
@@ -105,11 +108,17 @@ export class SessionStore {
     switch (event.type) {
       case "session/ready":
         // Full reset: nothing from the previous session may survive the
-        // switch (streaming buffers, run state, tokens, approvals).
+        // switch (streaming buffers, run state, tokens, approvals). The
+        // open dialog is PRESERVED: a session switch is often triggered
+        // from inside a dialog command (/sessions), and clearing it would
+        // strand the command's open() promise forever. Approvals are
+        // deliberately NOT preserved: they gate a specific turn of the old
+        // session and die with it.
         this.set({
           ...initial,
           sessionId: event.sessionId,
           exited: null,
+          dialog: this.state.dialog,
         });
         break;
       case "session/model":
@@ -182,6 +191,9 @@ export class SessionStore {
       case "surface/local":
         this.pushItem("local", event.text);
         break;
+      case "surface/git":
+        this.set({ gitBadge: event.badge });
+        break;
       default:
         break;
     }
@@ -206,6 +218,10 @@ export class SessionStore {
   dialogResolve: ((result: DialogResult) => void) | null = null;
 
   openDialog(request: DialogRequest): void {
+    // Re-entry safety: settle any still-open dialog before replacing it,
+    // so no open() promise is ever stranded (commands are serialized, but
+    // a session switch can re-enter through a preserved dialog).
+    if (this.state.dialog !== null) this.resolveDialog(null);
     this.set({ dialog: request });
   }
 

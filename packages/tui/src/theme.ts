@@ -245,7 +245,10 @@ export function validateThemeSpec(input: unknown): ThemeSpec | null {
     const base = raw.base === "dark" ? DARK : LIGHT;
     return {
       name: raw.name,
-      displayName: typeof raw.displayName === "string" ? raw.displayName : raw.name,
+      displayName:
+        typeof raw.displayName === "string" && raw.displayName.trim() !== ""
+          ? raw.displayName.trim()
+          : raw.name,
       mode: raw.base,
       background: raw.base === "light" ? "white" : null,
       colors: { ...base, ...(overrides as Partial<ColorPalette>) } as ColorPalette,
@@ -285,6 +288,9 @@ export function validateThemeSpec(input: unknown): ThemeSpec | null {
       diffRemoved: old["diffDel"] as string,
       diffMeta: old["diffContext"] as string,
     };
+    // v1 code/heading were text-level styles: honor the user's intent.
+    mapped.text = old["code"] as string;
+    mapped.textStrong = old["heading"] as string;
     return {
       name: raw.name,
       displayName: raw.name,
@@ -365,18 +371,24 @@ export async function detectTerminalScheme(timeoutMs = 400): Promise<"dark" | "l
     const finish = (value: "dark" | "light" | null): void => {
       if (settled) return;
       settled = true;
-      process.stdin.removeListener("data", onData);
-      process.stdin.pause();
+      // Keep the listener attached: terminals that answer AFTER our timeout
+      // would otherwise leak OSC bytes into Ink's input parser. Once
+      // settled the handler ignores everything (Ink attaches its own
+      // listener independently).
       resolve(value);
     };
+    let buffer = "";
     const onData = (chunk: Buffer): void => {
+      if (settled) return; // swallow late OSC responses
       const text = chunk.toString();
-      const schemeMatch = /\x1b\[\?997;(1|2)n/.exec(text);
+      // Responses may arrive split across chunks: accumulate a small buffer.
+      buffer = (buffer + text).slice(-64);
+      const schemeMatch = /\x1b\[\?997;(1|2)n/.exec(buffer);
       if (schemeMatch !== null) {
         finish(schemeMatch[1] === "2" ? "light" : "dark");
         return;
       }
-      const bgMatch = /\x1b\]11;([^\x07\x1b]*)(?:\x07|\x1b\\)/i.exec(text);
+      const bgMatch = /\x1b\]11;([^\x07\x1b]*)(?:\x07|\x1b\\)/i.exec(buffer);
       if (bgMatch !== null) {
         const value = bgMatch[1]!.trim().toLowerCase();
         if (value.startsWith("rgb:")) {

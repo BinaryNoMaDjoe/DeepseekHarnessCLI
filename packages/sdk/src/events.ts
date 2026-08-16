@@ -48,7 +48,8 @@ export type SdkEvent =
   | { type: "agent/status"; detail: AgentStatus }
   | { type: "agent/error"; error: { code: string; message: string } }
   | { type: "surface/exit"; code: number }
-  | { type: "surface/local"; text: string };
+  | { type: "surface/local"; text: string }
+  | { type: "surface/git"; badge: string | null };
 
 /** Unsubscribe function returned by subscription APIs. */
 export type Unsubscribe = () => void;

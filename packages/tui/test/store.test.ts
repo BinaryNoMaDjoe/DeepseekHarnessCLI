@@ -35,6 +35,49 @@ describe("SessionStore", () => {
     expect(item?.toolCalls[0]?.result).toEqual({ ok: true, text: "file contents" });
   });
 
+  it("replaces an open dialog by settling the previous one first", () => {
+    const store = new SessionStore();
+    const first = {
+      kind: "list" as const,
+      id: "d1",
+      title: "one",
+      searchable: false,
+      multi: false,
+      items: [],
+    };
+    const second = {
+      kind: "list" as const,
+      id: "d2",
+      title: "two",
+      searchable: false,
+      multi: false,
+      items: [],
+    };
+    let settled: unknown = "unset";
+    store.dialogResolve = (result) => {
+      settled = result;
+    };
+    store.openDialog(first);
+    store.openDialog(second);
+    expect(settled).toBeNull();
+    expect(store.getState().dialog?.id).toBe("d2");
+  });
+
+  it("preserves the open dialog across session switches", () => {
+    const store = new SessionStore();
+    store.openDialog({
+      kind: "list",
+      id: "d1",
+      title: "pick",
+      searchable: true,
+      multi: false,
+      items: [],
+    });
+    store.handle({ type: "session/ready", sessionId: "s2" });
+    expect(store.getState().dialog?.id).toBe("d1");
+    expect(store.getState().items).toEqual([]);
+  });
+
   it("resets every field when a new session attaches", () => {
     const store = new SessionStore();
     store.handle({ type: "turn/start" });

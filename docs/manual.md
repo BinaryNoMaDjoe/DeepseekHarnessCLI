@@ -145,7 +145,7 @@ v1（11 键完整 schema）仍兼容；完整 token 清单见 `packages/tui/src/
 
 `--theme <name>` 旗标 > `DSH_TUI_THEME` 环境变量 > `$DSH_HOME/tui.json`（`/theme` 写入）
 
-> 默认 `deepseek-dark`。切换对新会话生效。
+> 默认 `auto`（探测终端深浅，探测失败回退 `deepseek-dark`）。切换对新会话生效。
 
 ## 7. 模型与权限
 

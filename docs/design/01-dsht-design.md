@@ -79,7 +79,9 @@ DSH 会话事件（`session/event`，作用域过滤，seed 不重放）经 `bun
 | `agent/status`（Scoped<Agent> 总线）      | `agent/status`                  | 在 agent 作用域 setup 里订阅                                                                                           |
 | `agent/error`                             | `agent/error`                   | 同上                                                                                                                   |
 | （surface 自有）                          | `surface/exit`                  | REPL /exit → store.exited → App unmount                                                                                |
-| （surface 自有）                          | `session/ready`                 | client.attach 发出，重置 store                                                                                         |
+| （surface 自有）                          | `surface/local` / `surface/git` | 本地提示直接渲染为 transcript 项；git 徽标异步更新 footer                                                              |
+| （surface 自有）                          | `session/ready`                 | client.attach 发出，全量重置 store（保留打开的对话框）                                                                 |
+| （surface 自有）                          | `session/model`                 | attach 时跟随 ready 发出，状态栏显示会话实际模型                                                                       |
 
 ## 5. 会话生命周期
 
@@ -87,8 +89,8 @@ DSH 会话事件（`session/event`，作用域过滤，seed 不重放）经 `bun
 setup: installModelSelection + 作用域转发器})`；provider/model 默认取 `agentDefaultModel`。
 - **恢复**：`agents.resume({resumeSessionId})`（持久化加载即 seed 回放）；`--continue` 取
   `listSessions` 最近一条；恢复失败回退新建并提示。
-- **切换**：`/new`、`/resume <id>` 创建/恢复新句柄 → attach（session/ready 清屏）→
-  历史回放 → dispose 旧句柄。
+- **切换**：`/new`、`/resume <id>` 先创建/恢复新句柄 → attach（session/ready 清屏）→
+  历史回放 → 再 dispose 旧句柄（失败时旧会话存活）；旧句柄的迟到事件被适配器按会话 id 过滤。
 - **退出**：`/exit`（或 ctrl-c）→ `surface/exit` → App unmount → runner dispose 句柄 →
   `appExit(code)` → launcher 的有界 shutdown（5s 强制）。
 
@@ -151,13 +153,13 @@ bundle 解析双锚点：安装优先、profile 次之；`dsh-base` 来自安装
 
 ## 10.5 主题系统
 
-- 契约：`ThemeSpec {name, mode: dark|light, background, colors{11 键}}`（`packages/tui/src/theme.ts`）。
-- 内置两套基础主题表达 DSH 设计语言（克制、高级、高对比度）：
-  `deepseek-dark`（黑底白字）、`deepseek-light`（白底黑字）；文字主体黑白，
-  语义位置使用克制的彩色（diff 绿/红、状态图标、提示符强调色）。
-- 自定义：`$DSH_HOME/themes/<name>.json`（chalk 颜色名或 #hex）；`validateThemeSpec` 严格校验，
-  非法主题回退默认；`buildTheme` 编译为可调用 token（错误标记与审批弹窗用反色块）。
-- 选择优先级：`--theme` > `DSH_TUI_THEME` > `$DSH_HOME/tui.json`（`/theme` 写入）> 默认。
+- 契约：`ColorPalette` 30 语义 token（四级灰度文字层级、行级+词级 diff、子代理 8 色、
+  shimmer 变体；黑白=品牌，彩色仅功能性语义）；`buildTheme` 编译为可调用 token。
+- 内置主题：`auto`（OSC11/OSC997 探测）+ `deepseek-dark`/`deepseek-light` +
+  `deepseek-dark-daltonized`/`deepseek-light-daltonized`（色弱友好）。
+- 自定义 schema v2：`{name, displayName?, base: dark|light, colors: 部分覆盖}`（#RRGGBB
+  严格校验，未指定 token 回退 base；v1 11 键 schema 兼容）；非法主题回退默认，绝不崩溃。
+- 选择优先级：`--theme` > `DSH_TUI_THEME` > `$DSH_HOME/tui.json`（`/theme` 写入）> `auto`。
 - 组件经 `ThemeProvider`/`useTheme()` 消费主题（React context），根容器应用背景色。
 - 用户手册：`docs/manual.md` §6。
 

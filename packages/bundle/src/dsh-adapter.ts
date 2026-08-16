@@ -47,7 +47,7 @@ export interface DshAdapter extends ClientAdapter {
 
 export function createDshAdapter(
   services: DshAdapterServices,
-  forward: (event: SdkEvent) => void,
+  forward: (sessionId: string, event: SdkEvent) => void,
 ): DshAdapter {
   let current: DshAgentHandle | null = null;
 
@@ -193,7 +193,7 @@ export class DshAgentHandle implements AgentHandle {
 function mountForwarders(
   agentCtx: unknown,
   sessionId: string,
-  forward: (event: SdkEvent) => void,
+  forward: (sessionId: string, event: SdkEvent) => void,
 ): void {
   const ctx = agentCtx as {
     on(event: string, listener: (...args: unknown[]) => unknown): () => void;
@@ -202,19 +202,19 @@ function mountForwarders(
     const ses = session as { id: string };
     if (ses.id !== sessionId) return;
     const translated = translateSessionEvent(event as SessionEvent);
-    if (translated !== null) forward(translated);
+    if (translated !== null) forward(ses.id, translated);
   });
   ctx.on("agent/status", (payload) => {
     const p = payload as { agent?: { id: string }; status?: string };
     if (p.agent?.id !== sessionId || p.status === undefined) return;
     if (p.status === "idle" || p.status === "running") {
-      forward({ type: "agent/status", detail: { status: p.status } });
+      forward(sessionId, { type: "agent/status", detail: { status: p.status } });
     }
   });
   ctx.on("agent/error", (payload) => {
     const p = payload as { agent?: { id: string }; error?: { code?: string; message?: string } };
     if (p.agent?.id !== sessionId) return;
-    forward({
+    forward(sessionId, {
       type: "agent/error",
       error: { code: p.error?.code ?? "AGENT_ERROR", message: p.error?.message ?? "agent error" },
     });
