@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { DialogRequest, DialogResult } from "../store.js";
+import { filterItems, firstEmptyField, visiblePage } from "../dialog-logic.js";
 import { useTheme } from "../theme-context.js";
 
 const PAGE_SIZE = 12;
@@ -42,20 +43,11 @@ function ListDialog({
   const [toggled, setToggled] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
 
-  const filtered = useMemo(() => {
-    if (query === "") return req.items;
-    const q = query.toLowerCase();
-    return req.items.filter(
-      (item) =>
-        item.label.toLowerCase().includes(q) ||
-        (item.detail?.toLowerCase().includes(q) ?? false) ||
-        (item.meta?.some((line) => line.toLowerCase().includes(q)) ?? false),
-    );
-  }, [req.items, query]);
+  const filtered = useMemo(() => filterItems(req.items, query), [req.items, query]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
-  const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const visible = visiblePage(filtered, safePage, PAGE_SIZE);
 
   useInput((input, key) => {
     if (key.escape) {
@@ -176,18 +168,6 @@ function ListDialog({
       <Text>{theme.border("─".repeat(ruleWidth))}</Text>
     </Box>
   );
-}
-
-/** First field whose value is empty/whitespace, or null when all filled. */
-export function firstEmptyField(
-  fields: { key: string; label: string }[],
-  values: Record<string, string>,
-): { key: string; label: string } | null {
-  for (const field of fields) {
-    const value = (values[field.key] ?? "").trim();
-    if (value === "") return field;
-  }
-  return null;
 }
 
 function FieldsDialog({

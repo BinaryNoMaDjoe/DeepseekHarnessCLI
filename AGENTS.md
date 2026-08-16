@@ -41,8 +41,11 @@ pnpm typecheck        # 全仓类型检查
 pnpm lint             # eslint
 pnpm format          # prettier 写入
 pnpm test             # 全部 vitest
+pnpm coverage         # 覆盖率审计（门禁见 docs/testing.md §5）
 node scripts/e2e-install.mjs   # 把 tui profile 装进 .tmp/dsh-home（link 本仓库 bundle）
-node scripts/e2e-tui.mjs        # PTY 交互冒烟：/help → mock 回复 → /exit
+node scripts/e2e-tui.mjs        # PTY 交互冒烟：/help → /theme 对话框 → mock 回复 → /exit
+node scripts/e2e-approval.mjs   # 审批流：mock 触发 pwsh 提权 → 弹窗 → y 放行
+node scripts/e2e-resume.mjs     # 跨进程恢复 + 会话列表
 ```
 
 跑通 e2e 需要：`DSH_NPX_ROOT`（或默认路径）下的 node-pty 与 dsh 启动器。

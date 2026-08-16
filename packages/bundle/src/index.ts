@@ -17,7 +17,7 @@ import {
 import { gitBadge } from "./git-badge.js";
 import { createDshAdapter, type DshAdapterServices } from "./dsh-adapter.js";
 import type { DshAgentHandle } from "./dsh-adapter.js";
-import { mountAnswererBridge } from "./answerer.js";
+import { mountApprovalAnswerer, mountQuestionProvider } from "./answerer.js";
 import { buildCommands } from "./commands.js";
 import { apply as applyMockLlm } from "./mock-llm.js";
 import { ThemeManager } from "./theme-manager.js";
@@ -25,7 +25,7 @@ import { TUI_STARTUP_SERVICE, type TuiStartup } from "./startup.js";
 
 /**
  * The tui-runner plugin: the whole DSHT surface. It composes the SDK
- * client over DSH core services, mounts the answerer bridge, and routes
+ * client over DSH core services, mounts the scoped answerer, and routes
  * the startup mode into print / list-sessions / interactive.
  */
 
@@ -88,10 +88,16 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     if (adapter.current()?.sessionId !== sessionId) return;
     client.events.emit(event);
   };
-  const adapter = createDshAdapter(services, forward);
-  const client = createDshClient({ adapter });
   const broker = createApprovalBroker();
-  const bridge = mountAnswererBridge(ctx, broker);
+  // The approval waterfall is Scoped<Agent>-dispatched: answer it on each
+  // agent's own context (a root listener would receive nothing).
+  const adapter = createDshAdapter(services, forward, {
+    onSetup: (agentCtx) => {
+      mountApprovalAnswerer(agentCtx, broker);
+    },
+  });
+  const client = createDshClient({ adapter });
+  const offQuestions = mountQuestionProvider(ctx, broker);
 
   const modelService = services.agentDefaultModel;
   const permissionMode = process.env.DSH_PERMISSION_MODE ?? "workspace-write";
@@ -102,7 +108,7 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     for (const session of sessions) {
       io.out(session.id + "\t" + (session.title ?? ""));
     }
-    bridge.dispose();
+    offQuestions();
     io.exit(0);
     return;
   }
@@ -179,7 +185,7 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
 
   const code = await tui.waitForExit();
   await client.current?.dispose?.();
-  bridge.dispose();
+  offQuestions();
   io.exit(code);
 }
 

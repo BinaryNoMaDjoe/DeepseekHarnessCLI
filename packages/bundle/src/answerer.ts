@@ -1,66 +1,55 @@
 import type { ApprovalBroker, UserQuestion } from "@deepseek-harness/sdk";
 
 /**
- * Bridges DSH's human-decision seams into the SDK approval broker:
- *  - the approval/request waterfall (per-tool permissions), and
- *  - the single userQuestions provider (ask_user_question tool).
+ * Bridges DSH's human-decision seams into the SDK approval broker.
  *
- * Abort signals settle the broker fail-closed so the TUI modal always
- * clears even when the owning step dies first. allow-always is scoped to
- * the asking session (not process-wide).
+ * Scope discipline (audited): the approval/request waterfall is
+ * Scoped<Agent>-dispatched, so the answerer must be registered on each
+ * agent's own scoped context — a root-scope listener would receive
+ * nothing and every ask would fail closed with 'unavailable'. The
+ * userQuestions provider, in contrast, is a process singleton on the
+ * root context.
  */
 
 export interface AnswererBridge {
   dispose(): void;
 }
 
-export function mountAnswererBridge(ctx: unknown, broker: ApprovalBroker): AnswererBridge {
+/**
+ * Mount the approval waterfall answerer on ONE agent's scoped context.
+ * allow-always is scoped to that agent's session.
+ */
+export function mountApprovalAnswerer(agentCtx: unknown, broker: ApprovalBroker): () => void {
   let counter = 0;
-  const alwaysAllow = new Map<string, Set<string>>();
+  const alwaysAllow = new Set<string>();
 
-  const c = ctx as {
+  const ctx = agentCtx as {
     on(event: string, listener: (...args: unknown[]) => unknown): () => void;
-    get(name: string): unknown;
   };
 
-  const offApproval = c.on("approval/request", (req, next) => {
-    const request = req as {
-      agent?: { id?: string };
-      toolName: string;
-      reason?: string;
-      signal?: AbortSignal;
-    };
+  return ctx.on("approval/request", (req, next) => {
+    const request = req as { toolName: string; reason?: string; signal?: AbortSignal };
     const fallthrough = next as () => Promise<string>;
-    const agentId = request.agent?.id ?? "";
-    const allowed = alwaysAllow.get(agentId);
-    if (allowed !== undefined && allowed.has(request.toolName)) return "allowed-once";
-
-    const approvalRequest = {
-      id: "approval-" + ++counter,
-      kind: "tool-use" as const,
-      toolName: request.toolName,
-      prompt: request.reason ?? "Allow the " + request.toolName + " tool to run?",
-    };
+    if (alwaysAllow.has(request.toolName)) return "allowed-once";
 
     request.signal?.addEventListener("abort", () => {
       broker.cancelCurrent({ action: "deny" });
     });
 
     return broker
-      .request(approvalRequest)
+      .request({
+        id: "approval-" + ++counter,
+        kind: "tool-use",
+        toolName: request.toolName,
+        prompt: request.reason ?? "Allow the " + request.toolName + " tool to run?",
+      })
       .then((decision) => {
         switch (decision.action) {
           case "allow":
             return "allowed-once";
-          case "allow-always": {
-            let tools = alwaysAllow.get(agentId);
-            if (tools === undefined) {
-              tools = new Set();
-              alwaysAllow.set(agentId, tools);
-            }
-            tools.add(request.toolName);
+          case "allow-always":
+            alwaysAllow.add(request.toolName);
             return "allowed-once";
-          }
           case "deny":
             return "rejected";
           case "answer":
@@ -69,6 +58,11 @@ export function mountAnswererBridge(ctx: unknown, broker: ApprovalBroker): Answe
       })
       .catch(() => fallthrough());
   });
+}
+
+/** Mount the process-singleton userQuestions provider on the root ctx. */
+export function mountQuestionProvider(rootCtx: unknown, broker: ApprovalBroker): () => void {
+  let counter = 0;
 
   interface Question {
     id: string;
@@ -82,7 +76,7 @@ export function mountAnswererBridge(ctx: unknown, broker: ApprovalBroker): Answe
     signal?: AbortSignal;
   }
 
-  const userQuestions = c.get("userQuestions") as
+  const userQuestions = (rootCtx as { get(name: string): unknown }).get("userQuestions") as
     | {
         registerProvider(provider: {
           ask(request: QuestionRequest): Promise<{ answers: { id: string; selected: string[] }[] }>;
@@ -90,46 +84,40 @@ export function mountAnswererBridge(ctx: unknown, broker: ApprovalBroker): Answe
       }
     | undefined;
 
-  const offQuestions = userQuestions?.registerProvider({
-    ask: async (request: QuestionRequest) => {
-      request.signal?.addEventListener("abort", () => {
-        broker.cancelCurrent({ action: "deny" });
-      });
-      // The broker serializes: ask the human once per question, in order.
-      const answers: { id: string; selected: string[] }[] = [];
-      for (const question of request.questions) {
-        const sdkQuestion: UserQuestion = {
-          id: question.id,
-          question: question.question,
-          header: question.header,
-          options: (question.options ?? []).map((option) => ({
-            label: option.label,
-            description: option.description,
-          })),
-          multiSelect: question.multiSelect ?? false,
-        };
-        const decision = await broker.request({
-          id: "question-" + ++counter,
-          kind: "question",
-          prompt: question.question,
-          question: sdkQuestion,
+  return (
+    userQuestions?.registerProvider({
+      ask: async (request: QuestionRequest) => {
+        request.signal?.addEventListener("abort", () => {
+          broker.cancelCurrent({ action: "deny" });
         });
-        const selected =
-          decision.action === "answer"
-            ? decision.selected.filter((label) =>
-                (question.options ?? []).some((option) => option.label === label),
-              )
-            : [];
-        answers.push({ id: question.id, selected });
-      }
-      return { answers };
-    },
-  });
-
-  return {
-    dispose(): void {
-      offApproval();
-      offQuestions?.();
-    },
-  };
+        const answers: { id: string; selected: string[] }[] = [];
+        for (const question of request.questions) {
+          const sdkQuestion: UserQuestion = {
+            id: question.id,
+            question: question.question,
+            header: question.header,
+            options: (question.options ?? []).map((option) => ({
+              label: option.label,
+              description: option.description,
+            })),
+            multiSelect: question.multiSelect ?? false,
+          };
+          const decision = await broker.request({
+            id: "question-" + ++counter,
+            kind: "question",
+            prompt: question.question,
+            question: sdkQuestion,
+          });
+          const selected =
+            decision.action === "answer"
+              ? decision.selected.filter((label) =>
+                  (question.options ?? []).some((option) => option.label === label),
+                )
+              : [];
+          answers.push({ id: question.id, selected });
+        }
+        return { answers };
+      },
+    }) ?? (() => undefined)
+  );
 }

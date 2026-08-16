@@ -173,6 +173,7 @@ function emitStreamJson(io: HeadlessIo, event: SdkEvent, sessionId: string | nul
           call: event.call,
           ok: event.ok,
           content: event.content,
+          ...(event.error !== undefined ? { error: event.error } : {}),
         }),
       );
       break;

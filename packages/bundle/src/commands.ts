@@ -25,6 +25,16 @@ export interface CommandDeps {
   dialogs: () => DialogHost;
 }
 
+/** Replay history through any handle that offers it (duck-typed). */
+function replayHistory(
+  handle: unknown,
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- local inline type
+  emit: (event: import("@deepseek-harness/sdk").SdkEvent) => void,
+): void {
+  const replay = (handle as { replayHistory?: (emitFn: typeof emit) => void }).replayHistory;
+  replay?.(emit);
+}
+
 export function buildCommands(deps: CommandDeps): SlashCommand[] {
   const delegate = (name: string, args: string[], emitLocal: (text: string) => void): void => {
     const handle = deps.client.current;
@@ -141,7 +151,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
           // then dispose the old handle; late old-session events are gated
           // by the adapter's session filter.
           const handle = await deps.client.resumeSession(id);
-          (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          replayHistory(handle, (event) => deps.client.events.emit(event));
           await deps.client.current?.dispose?.();
           context.emitLocal("resumed " + id);
         } catch (error) {
@@ -160,7 +170,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
         }
         try {
           const handle = await deps.client.resumeSession(id);
-          (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          replayHistory(handle, (event) => deps.client.events.emit(event));
           await deps.client.current?.dispose?.();
           context.emitLocal("resumed " + id);
         } catch (error) {
@@ -174,7 +184,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
       async run(_args, context) {
         try {
           const handle = await deps.client.createSession();
-          (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          replayHistory(handle, (event) => deps.client.events.emit(event));
           await deps.client.current?.dispose?.();
           context.emitLocal("new session: " + handle.sessionId.slice(0, 12));
         } catch (error) {

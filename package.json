@@ -15,11 +15,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r --if-present run test",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "coverage": "pnpm -r --if-present run coverage"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
     "@types/node": "^22.15.0",
+    "@vitest/coverage-v8": "^3.2.0",
     "eslint": "^9.30.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "prettier": "^3.6.0",

@@ -364,8 +364,26 @@ export const DEFAULT_THEME = buildTheme(DEEPSEEK_DARK);
  * color-scheme report). Used to resolve the auto theme. Must run BEFORE
  * Ink attaches to stdin; non-fatal on timeout.
  */
-export async function detectTerminalScheme(timeoutMs = 400): Promise<"dark" | "light" | null> {
-  if (!process.stdout.isTTY || !process.stdin.isTTY) return null;
+export interface DetectOptions {
+  timeoutMs?: number;
+  /** Injectable IO for tests (defaults to process streams). */
+  stdin?: {
+    isTTY?: boolean;
+    setRawMode(mode: boolean): void;
+    resume(): void;
+    on(event: string, listener: (chunk: Buffer) => void): unknown;
+  };
+  stdout?: { isTTY?: boolean; write(text: string): unknown };
+}
+
+export async function detectTerminalScheme(
+  options: DetectOptions = {},
+): Promise<"dark" | "light" | null> {
+  const stdin = options.stdin ?? (process.stdin as unknown as DetectOptions["stdin"]);
+  const stdout = options.stdout ?? (process.stdout as unknown as DetectOptions["stdout"]);
+  if (stdin === undefined || stdout === undefined) return null;
+  if (stdout.isTTY === false || stdin.isTTY === false) return null;
+  const timeoutMs = options.timeoutMs ?? 400;
   return await new Promise((resolve) => {
     let settled = false;
     const finish = (value: "dark" | "light" | null): void => {
@@ -402,11 +420,11 @@ export async function detectTerminalScheme(timeoutMs = 400): Promise<"dark" | "l
       }
     };
     try {
-      process.stdin.setRawMode(true);
-      process.stdin.resume();
-      process.stdin.on("data", onData);
-      process.stdout.write("\x1b]11;?\x07");
-      process.stdout.write("\x1b[?997n");
+      stdin.setRawMode(true);
+      stdin.resume();
+      stdin.on("data", onData);
+      stdout.write("\x1b]11;?\x07");
+      stdout.write("\x1b[?997n");
     } catch {
       finish(null);
       return;

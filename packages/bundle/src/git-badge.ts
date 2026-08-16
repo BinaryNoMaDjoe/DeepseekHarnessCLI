@@ -1,14 +1,21 @@
 import { execFile } from "node:child_process";
 
+type Exec = typeof execFile;
+
 /**
  * Git badge for the footer: current branch plus a dirty marker.
  * Best effort: any failure resolves to null (not a git repo, no git
- * binary, or a timeout).
+ * binary, or a timeout). The exec function is injectable for tests.
  */
-export function gitBadge(cwd: string, timeoutMs = 3000): Promise<string | null> {
+export function gitBadge(
+  cwd: string,
+  options: { timeoutMs?: number; exec?: Exec } = {},
+): Promise<string | null> {
+  const exec = options.exec ?? execFile;
+  const timeoutMs = options.timeoutMs ?? 3000;
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(null), timeoutMs);
-    execFile(
+    exec(
       "git",
       ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
       { timeout: timeoutMs },
@@ -23,7 +30,7 @@ export function gitBadge(cwd: string, timeoutMs = 3000): Promise<string | null> 
           resolve(null);
           return;
         }
-        execFile(
+        exec(
           "git",
           ["-C", cwd, "status", "--porcelain"],
           { timeout: timeoutMs },

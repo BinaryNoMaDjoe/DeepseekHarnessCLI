@@ -25,10 +25,13 @@ export function ApprovalPrompt({
   const multi = request.question?.multiSelect ?? false;
 
   useInput((input, key) => {
+    // Line-buffered terminals deliver "y\r" as one chunk: take the first
+    // printable segment (same discipline as InputBox).
+    const first = (input.split(/\r\n|\r|\n/)[0] ?? "").trim().toLowerCase();
     if (request.question === undefined) {
-      if (input === "y" || input === "Y") onDecide({ action: "allow" });
-      else if (input === "a" || input === "A") onDecide({ action: "allow-always" });
-      else if (input === "n" || input === "N" || key.escape) onDecide({ action: "deny" });
+      if (first === "y") onDecide({ action: "allow" });
+      else if (first === "a") onDecide({ action: "allow-always" });
+      else if (first === "n" || key.escape) onDecide({ action: "deny" });
       return;
     }
     if (key.upArrow) setSelected((current) => Math.max(0, current - 1));

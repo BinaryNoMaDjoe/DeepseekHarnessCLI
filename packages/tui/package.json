@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "description": "React + Ink full-screen terminal UI for the DSHT agent: message stream, tool cards, diffs, status bar, input, approvals.",
   "dependencies": {

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.1 (2026-08-16)
+
+测试体系设计与审计（docs/testing.md）。
+
+### 测试审计抓出的真实缺陷（已修复）
+
+- **Critical**：审批 answerer 注册在根作用域，而 approval/request 是 Scoped<Agent>
+  分发——交互模式下审批从未弹出、所有 ask 静默失败。修复：answerer 按 agent 作用域
+  注册（mountApprovalAnswerer），提问 provider 保持进程单例。
+- **High**：行缓冲终端把 y/a/n 作为整块送达，审批弹窗按键失效。修复：
+  ApprovalPrompt 按换行分割取首段（与 InputBox 同纪律）。
+- stream-json 的 tool_result 行补充 error 字段（诊断用协议增强）。
+
+### 新增
+
+- 测试设计文档 docs/testing.md（五层策略/可测性铁律/门禁与豁免）。
+- 可测性重构：dialog 纯函数抽取（filterItems/visiblePage/firstEmptyField →
+  dialog-logic.ts）、detectTerminalScheme IO 可注入、git-badge exec 可注入、
+  commands 鸭子类型回放。
+- 新测试 25 个：SDK driver/headless 错误路径、对话框逻辑、终端探测（假 IO）、
+  bundle 命令对话框流、git-badge、CLI 嵌套环境（总计 86 测试全绿）。
+- 审批流 e2e（scripts/e2e-approval.mjs）：mock 触发 pwsh 沙箱提权 → 审批弹窗 → y 放行 → 完成。
+- vitest coverage（v8）：纯函数模块 86.7-100%、sdk 83%；门禁见 docs/testing.md §5。
+
 ## 0.3.0 (2026-08-16)
 
 视觉系统 v2：融合 Kimi Code 与 Claude Code 的终端 UI 工程并超越，品牌保持黑白。

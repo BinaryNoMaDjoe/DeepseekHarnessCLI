@@ -18,7 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "description": "Framework-agnostic driver SDK for the DSHT terminal agent: session driving, event model, approvals, headless stream-json output.",
   "devDependencies": {

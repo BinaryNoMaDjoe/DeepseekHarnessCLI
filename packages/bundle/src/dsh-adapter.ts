@@ -45,9 +45,15 @@ export interface DshAdapter extends ClientAdapter {
   listSessions(query?: string, limit?: number): Promise<SessionInfo[]>;
 }
 
+export interface DshAdapterHooks {
+  /** Extra per-session setup (e.g. the scoped approval answerer). */
+  onSetup?(agentCtx: unknown): void;
+}
+
 export function createDshAdapter(
   services: DshAdapterServices,
   forward: (sessionId: string, event: SdkEvent) => void,
+  hooks: DshAdapterHooks = {},
 ): DshAdapter {
   let current: DshAgentHandle | null = null;
 
@@ -71,6 +77,7 @@ export function createDshAdapter(
           assembled: void 0,
         });
         mountForwarders(agentCtx, sessionId, forward);
+        hooks.onSetup?.(agentCtx);
       },
     });
     const handle = new DshAgentHandle(created.agent, false, services.sessions, created.dispose);
@@ -97,6 +104,7 @@ export function createDshAdapter(
           ) => void
         )(agentCtx, { current: { provider, model }, assembled: void 0 });
         mountForwarders(agentCtx, sid, forward);
+        hooks.onSetup?.(agentCtx);
       },
     });
     const handle = new DshAgentHandle(resumed.agent, true, services.sessions, resumed.dispose);
