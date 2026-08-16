@@ -32,7 +32,9 @@ function replayHistory(
   emit: (event: import("@deepseek-harness/sdk").SdkEvent) => void,
 ): void {
   const replay = (handle as { replayHistory?: (emitFn: typeof emit) => void }).replayHistory;
-  replay?.(emit);
+  // Bound call: the detached reference would lose `this` (ESM strict mode),
+  // crashing DshAgentHandle.replayHistory on the first session event.
+  replay?.call(handle, emit);
 }
 
 /** Attach a session handle and dispose the previous one, replaying history. */
@@ -41,12 +43,16 @@ async function attachSession(
   emitLocal: (text: string) => void,
   id: string,
 ): Promise<void> {
-  // Attach the new session FIRST (failure keeps the old one alive),
-  // then dispose the old handle; late old-session events are gated
-  // by the adapter's session filter.
+  // Capture the OLD handle before attaching: the client's current switches
+  // to the new handle inside resumeSession, so disposing client.current
+  // afterwards would tear down the freshly attached session (and leak the
+  // old one). Attach first (failure keeps the old one alive), then dispose
+  // the captured old handle; late old-session events are gated by the
+  // adapter's session filter.
+  const previous = deps.client.current;
   const handle = await deps.client.resumeSession(id);
   replayHistory(handle, (event) => deps.client.events.emit(event));
-  await deps.client.current?.dispose?.();
+  await previous?.dispose?.();
   emitLocal("resumed " + id);
 }
 
@@ -228,9 +234,12 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
       description: "start a fresh session (disposes the current one)",
       async run(_args, context) {
         try {
+          // Dispose the captured previous handle, not client.current: after
+          // createSession the client's current IS the new handle.
+          const previous = deps.client.current;
           const handle = await deps.client.createSession();
           replayHistory(handle, (event) => deps.client.events.emit(event));
-          await deps.client.current?.dispose?.();
+          await previous?.dispose?.();
           context.emitLocal("new session: " + handle.sessionId.slice(0, 12));
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));

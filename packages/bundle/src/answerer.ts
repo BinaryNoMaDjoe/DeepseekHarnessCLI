@@ -32,17 +32,18 @@ export function mountApprovalAnswerer(agentCtx: unknown, broker: ApprovalBroker)
     const fallthrough = next as () => Promise<string>;
     if (alwaysAllow.has(request.toolName)) return "allowed-once";
 
-    request.signal?.addEventListener("abort", () => {
-      broker.cancelCurrent({ action: "deny" });
-    });
-
     return broker
-      .request({
-        id: "approval-" + ++counter,
-        kind: "tool-use",
-        toolName: request.toolName,
-        prompt: request.reason ?? "Allow the " + request.toolName + " tool to run?",
-      })
+      .request(
+        {
+          id: "approval-" + ++counter,
+          kind: "tool-use",
+          toolName: request.toolName,
+          prompt: request.reason ?? "Allow the " + request.toolName + " tool to run?",
+        },
+        // Per-request signal: the broker settles THIS request on abort, so a
+        // concurrent abort can never force-deny a different queue head.
+        request.signal,
+      )
       .then((decision) => {
         switch (decision.action) {
           case "allow":
@@ -87,9 +88,6 @@ export function mountQuestionProvider(rootCtx: unknown, broker: ApprovalBroker):
   return (
     userQuestions?.registerProvider({
       ask: async (request: QuestionRequest) => {
-        request.signal?.addEventListener("abort", () => {
-          broker.cancelCurrent({ action: "deny" });
-        });
         const answers: { id: string; selected: string[] }[] = [];
         for (const question of request.questions) {
           const sdkQuestion: UserQuestion = {
@@ -102,12 +100,17 @@ export function mountQuestionProvider(rootCtx: unknown, broker: ApprovalBroker):
             })),
             multiSelect: question.multiSelect ?? false,
           };
-          const decision = await broker.request({
-            id: "question-" + ++counter,
-            kind: "question",
-            prompt: question.question,
-            question: sdkQuestion,
-          });
+          const decision = await broker.request(
+            {
+              id: "question-" + ++counter,
+              kind: "question",
+              prompt: question.question,
+              question: sdkQuestion,
+            },
+            // Per-request signal: settles THIS question on abort without
+            // touching the queue head (concurrent-ask race).
+            request.signal,
+          );
           const selected =
             decision.action === "answer"
               ? decision.selected.filter((label) =>

@@ -217,7 +217,7 @@ async function attachInitial(
   let resumeFailed = false;
   let target = startup.resume;
   if (target === null && startup.useContinue) {
-    // DSH's listSessions is deterministic newest-first (audit §3.3), so the
+    // DSH's listSessions is deterministic newest-first (audit §3), so the
     // first entry is the most recently created session.
     const sessions = await adapter.listSessions(undefined, 5);
     target = sessions[0]?.id ?? null;

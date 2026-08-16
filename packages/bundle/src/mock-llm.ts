@@ -23,11 +23,15 @@ export const name = "tui-mock-llm";
 export const inject = ["llm"];
 
 export class MockLlmAdapter extends LlmAdapter {
+  private callCounter = 0;
+
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     const tool = readToolScript();
     const text = tool === null ? readReply(options) : "";
     const index = 0;
-    const callId = CallId("mock-call");
+    // Unique per call: duplicated ids inside one turn would break the
+    // transcript's call/result pairing.
+    const callId = CallId("mock-call-" + ++this.callCounter);
     if (tool !== null) {
       yield { type: "block-start", index, blockType: "tool-call" };
       yield {

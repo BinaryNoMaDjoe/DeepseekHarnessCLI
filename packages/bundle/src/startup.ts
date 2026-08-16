@@ -102,15 +102,21 @@ export function apply(ctx: unknown): void {
       if (task.trim() === "")
         program.error(
           'error: a task is required with --print, for example: --print "run the tests"',
+          {
+            exitCode: 2,
+          },
         );
     }
     if (mode === "interactive" && positionals.length > 0) {
       program.error(
         "error: interactive mode takes no positional arguments (did you mean --print?)",
+        {
+          exitCode: 2,
+        },
       );
     }
     if (options["plan"] === true && mode !== "interactive") {
-      program.error("error: --plan requires the interactive TUI");
+      program.error("error: --plan requires the interactive TUI", { exitCode: 2 });
     }
     const outputFormat =
       options["json"] === true ? "stream-json" : validateFormat(options["outputFormat"], program);
@@ -145,10 +151,10 @@ function asTask(value: unknown): string | null {
 
 function validateFormat(value: unknown, program: Command): "text" | "stream-json" {
   if (value === "text" || value === "stream-json") return value;
-  program.error("error: --output-format must be text or stream-json");
+  program.error("error: --output-format must be text or stream-json", { exitCode: 2 });
 }
 
 function validateApproval(value: unknown, program: Command): HeadlessApproval {
   if (value === "deny" || value === "ask" || value === "allow") return value;
-  program.error("error: --approval must be deny, ask, or allow");
+  program.error("error: --approval must be deny, ask, or allow", { exitCode: 2 });
 }

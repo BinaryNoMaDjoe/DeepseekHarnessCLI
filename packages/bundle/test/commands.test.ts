@@ -196,4 +196,107 @@ describe("bundle commands", () => {
     await find(commands, "theme")!.run(["nope"], context);
     expect(emitted.some((line) => line.includes("unknown theme"))).toBe(true);
   });
+
+  it("/new disposes the PREVIOUS handle, not the freshly created one (regression)", async () => {
+    const adapter = createFakeAdapter();
+    const origCreate = adapter.createSession.bind(adapter);
+    const freshDispose = vi.fn(async () => undefined);
+    adapter.createSession = (async (options) => {
+      const handle = await origCreate(options);
+      (handle as { dispose?: unknown }).dispose = freshDispose;
+      return handle;
+    }) as typeof adapter.createSession;
+    const client = createDshClient({ adapter });
+    const old = await client.createSession();
+    const oldDispose = vi.fn(async () => undefined);
+    (old as { dispose?: unknown }).dispose = oldDispose;
+    const { deps } = makeDeps({
+      adapter: adapter as unknown as CommandDeps["adapter"],
+      client,
+    });
+    const commands = buildCommands(deps);
+    const emitted: string[] = [];
+    const context = {
+      agent: null,
+      repl: null as never,
+      emitLocal: (text: string) => emitted.push(text),
+    };
+    await find(commands, "new")!.run([], context);
+    expect(oldDispose).toHaveBeenCalledTimes(1);
+    expect(freshDispose).not.toHaveBeenCalled();
+    expect(client.current?.sessionId).not.toBe(old.sessionId);
+    expect(emitted.some((line) => line.includes("new session:"))).toBe(true);
+  });
+
+  it("/sessions disposes the PREVIOUS handle after attaching the pick (regression)", async () => {
+    const adapter = createFakeAdapter();
+    adapter.listSessions = vi.fn(async () => [{ id: "session-abc", title: "old work" }]) as never;
+    const origResume = adapter.resumeSession.bind(adapter);
+    const freshDispose = vi.fn(async () => undefined);
+    adapter.resumeSession = (async (id, options) => {
+      const handle = await origResume(id, options);
+      (handle as { dispose?: unknown }).dispose = freshDispose;
+      return handle;
+    }) as typeof adapter.resumeSession;
+    const client = createDshClient({ adapter });
+    const old = await client.createSession();
+    const oldDispose = vi.fn(async () => undefined);
+    (old as { dispose?: unknown }).dispose = oldDispose;
+    const { deps, dialogs } = makeDeps({
+      adapter: adapter as unknown as CommandDeps["adapter"],
+      client,
+    });
+    const commands = buildCommands(deps);
+    const emitted: string[] = [];
+    const context = {
+      agent: null,
+      repl: null as never,
+      emitLocal: (text: string) => emitted.push(text),
+    };
+    dialogs.results.push(["session-abc"]);
+    await find(commands, "sessions")!.run([], context);
+    expect(oldDispose).toHaveBeenCalledTimes(1);
+    expect(freshDispose).not.toHaveBeenCalled();
+    expect(client.current?.sessionId).toBe("session-abc");
+    expect(emitted.some((line) => line.includes("resumed session-abc"))).toBe(true);
+  });
+
+  it("replays history through a BOUND handle method (regression: detached `this`)", async () => {
+    const adapter = createFakeAdapter();
+    const origCreate = adapter.createSession.bind(adapter);
+    adapter.createSession = (async (options) => {
+      const handle = await origCreate(options);
+      // Mimic DshAgentHandle.replayHistory: it dereferences `this`, so a
+      // detached call crashes with "Cannot read properties of undefined".
+      (
+        handle as unknown as {
+          replayHistory(this: unknown, emit: (event: unknown) => void): void;
+        }
+      ).replayHistory = function (emit) {
+        expect(this).toBe(handle);
+        emit({ type: "surface/local", text: "replayed-history" });
+      };
+      return handle;
+    }) as typeof adapter.createSession;
+    const client = createDshClient({ adapter });
+    await client.createSession();
+    const replayed: string[] = [];
+    client.events.subscribe((event) => {
+      if (event.type === "surface/local") replayed.push(event.text);
+    });
+    const { deps } = makeDeps({
+      adapter: adapter as unknown as CommandDeps["adapter"],
+      client,
+    });
+    const commands = buildCommands(deps);
+    const emitted: string[] = [];
+    const context = {
+      agent: null,
+      repl: null as never,
+      emitLocal: (text: string) => emitted.push(text),
+    };
+    await find(commands, "new")!.run([], context);
+    expect(replayed).toContain("replayed-history");
+    expect(emitted.some((line) => line.includes("new session:"))).toBe(true);
+  });
 });
