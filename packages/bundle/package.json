@@ -4,14 +4,14 @@
   "type": "module",
   "description": "The DSHT cordis bundle: mounts the tui profile over dsh-base — cmdline startup provider, interactive TUI runner, headless modes, mock LLM adapter.",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
+  "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
+      "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
     "./startup": {
-      "types": "./lib/types/startup.d.ts",
+      "types": "./lib/startup.d.ts",
       "default": "./lib/startup.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
