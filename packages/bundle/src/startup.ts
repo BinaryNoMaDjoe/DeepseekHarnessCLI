@@ -28,6 +28,8 @@ export interface TuiStartup {
   approval: HeadlessApproval;
   /** Theme name override; null falls back to env/config/default. */
   theme: string | null;
+  /** Enter plan mode right after the initial session attaches (interactive). */
+  plan: boolean;
 }
 
 /**
@@ -54,9 +56,10 @@ export function tuiCommand(): Command {
     .option("--provider <provider>", "provider route for this session")
     .option("--approval <policy>", "headless approval policy: deny | ask | allow", "deny")
     .option(
-      "--dangerously-skip-approvals",
+      "-y, --dangerously-skip-approvals",
       "grant every approval in headless mode (same as --approval allow)",
     )
+    .option("-P, --plan", "enter plan mode after startup (interactive TUI only)")
     .option("--list-sessions", "list persisted sessions and exit")
     .option(
       "--theme <name>",
@@ -71,6 +74,8 @@ export function tuiCommand(): Command {
         '  dsh --profile tui --print "run the tests"  answer one task and exit',
         '  dsh --profile tui -p "fix the bug" --json  machine-readable transcript',
         "  dsh --profile tui --resume abc123          resume an existing session",
+        "  dsh --profile tui -P                       start in plan mode",
+        '  dsh --profile tui -p "task" -y            one task, all approvals granted',
         "",
       ].join("\n"),
     );
@@ -104,6 +109,9 @@ export function apply(ctx: unknown): void {
         "error: interactive mode takes no positional arguments (did you mean --print?)",
       );
     }
+    if (options["plan"] === true && mode !== "interactive") {
+      program.error("error: --plan requires the interactive TUI");
+    }
     const outputFormat =
       options["json"] === true ? "stream-json" : validateFormat(options["outputFormat"], program);
     const approval =
@@ -121,6 +129,7 @@ export function apply(ctx: unknown): void {
       outputFormat,
       approval,
       theme: typeof options["theme"] === "string" ? options["theme"] : null,
+      plan: options["plan"] === true,
     });
   });
   (parseCmdline as unknown as (ctx: unknown, program: Command) => void)(ctx, program);

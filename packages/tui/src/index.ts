@@ -25,6 +25,8 @@ export interface StartTuiOptions {
   themeInstance?: ThemeInstance;
   /** Deferred git badge for the footer (computed by the bundle). */
   gitBadge?: Promise<string | null> | null;
+  /** Executes `!`-prefixed input as a local shell command (bundle-provided). */
+  runShell?: (command: string) => Promise<void>;
 }
 
 /** Host for modal dialogs: commands await user selection through this. */
@@ -51,6 +53,7 @@ export function startTui(options: StartTuiOptions): TuiInstance {
     commands: options.commands,
     agentProvider: () => options.client.current,
     emitLocal: (event) => store.handle(event),
+    runShell: options.runShell,
   });
 
   const unsub = options.client.events.subscribe((event) => {

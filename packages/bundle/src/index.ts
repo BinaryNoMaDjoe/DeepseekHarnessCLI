@@ -15,11 +15,11 @@ import {
   startTui,
 } from "@deepseek-harness/tui";
 import { gitBadge } from "./git-badge.js";
-import { createDshAdapter, type DshAdapterServices } from "./dsh-adapter.js";
-import type { DshAgentHandle } from "./dsh-adapter.js";
+import { DshAgentHandle, createDshAdapter, type DshAdapterServices } from "./dsh-adapter.js";
 import { mountApprovalAnswerer, mountQuestionProvider } from "./answerer.js";
 import { buildCommands } from "./commands.js";
 import { apply as applyMockLlm } from "./mock-llm.js";
+import { runLocalShell } from "./local-shell.js";
 import { ThemeManager } from "./theme-manager.js";
 import { TUI_STARTUP_SERVICE, type TuiStartup } from "./startup.js";
 
@@ -157,6 +157,8 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     permissionMode,
     themeSpec,
     gitBadge: badgePromise,
+    runShell: (command) =>
+      runLocalShell(command, (text) => client.events.emit({ type: "surface/local", text })),
   });
 
   const commands = buildCommands({
@@ -181,6 +183,9 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
         message: error instanceof Error ? error.message : String(error),
       },
     });
+  }
+  if (startup.plan) {
+    await enterPlanMode(c, client);
   }
 
   const code = await tui.waitForExit();
@@ -241,6 +246,36 @@ async function attachInitial(
     });
   }
 }
+/** Run the dsh /plan command on the attached agent (--plan startup flag). */
+async function enterPlanMode(
+  c: { get(name: string): unknown },
+  client: ReturnType<typeof createDshClient>,
+): Promise<void> {
+  const handle = client.current;
+  if (handle === null || !(handle instanceof DshAgentHandle)) return;
+  const commands = c.get("commands") as
+    | {
+        execute(
+          agent: unknown,
+          line: string,
+          signal?: AbortSignal,
+        ): Promise<{ kind: string; text?: string } | undefined>;
+      }
+    | undefined;
+  if (commands === undefined) return;
+  try {
+    const result = await commands.execute(handle.agent, "/plan", new AbortController().signal);
+    if (result?.text !== undefined) {
+      client.events.emit({ type: "surface/local", text: result.text });
+    }
+  } catch (error) {
+    client.events.emit({
+      type: "surface/local",
+      text: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /** y/n/a approval answerer over stdin for headless --approval ask runs. */
 function createStdinAnswerer(): Answerer {
   return {

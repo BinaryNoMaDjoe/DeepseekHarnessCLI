@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+命令 UX 优化：短别名、唯一前缀解析、`!` shell 直通与 CLI 短旗标
+（对照 Claude Code 与 Kimi Code 命令面，见 docs/design/04-command-ux.md）。
+
+### 新增
+
+- 斜杠命令短别名与唯一前缀解析（sdk/repl.ts）：`/h /s /r /n /e /st /t /m /p /g /c /f`
+  `/q /x /?`；`/se` → `/sessions`；歧义报候选、裸 `/` 打印帮助。
+- `!` shell 直通：`!cmd` 本地执行并回显 transcript（sdk runShell 钩子 + bundle
+  local-shell.ts，8KB 截断、非零退出报 [exit N]）。
+- `/resume <id-or-prefix>` 会话前缀匹配（唯一则恢复，多个列候选）。
+- CLI 短旗标：`-y`（--dangerously-skip-approvals）、`-P/--plan`（交互启动进计划模式）；
+  dsht 启动器新增 `--mock`（注入 DSH_MOCK_LLM + mock provider/model 默认值）。
+- 单测 +26（SDK repl 别名/前缀/歧义/shell、bundle 别名表/resume 前缀/local-shell），
+  e2e-tui 增补 `!echo`、`/h`、`/st`、`/q` 冒烟。
+- 修复 `/plan` 委托传 `undefined` signal 导致 narration 注入崩溃（
+  `Cannot read properties of undefined (reading 'aborted')`）；委托命令现回显 success 文本。
+
 ## 0.3.1 (2026-08-16)
 
 测试体系设计与审计（docs/testing.md）。

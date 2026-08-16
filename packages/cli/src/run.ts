@@ -12,6 +12,8 @@ export interface RunOptions {
   dshBin?: string;
   provision?: boolean;
   linkPath?: string;
+  /** Extra variables merged over the inherited (possibly scrubbed) env. */
+  env?: Record<string, string>;
 }
 
 export async function runDsht(options: RunOptions): Promise<number> {
@@ -21,13 +23,15 @@ export async function runDsht(options: RunOptions): Promise<number> {
   const bin = options.dshBin ?? "dsh";
   // Scrub the host session's DSH_* variables when nested: the spawned dsh
   // must resolve its own profile home, not the host's.
-  const env = isNestedHarnessSession()
+  const scrubbed = isNestedHarnessSession()
     ? Object.fromEntries(
         Object.entries(process.env).filter(
           ([key]) => !key.startsWith("DSH_") && !key.startsWith("XDG_"),
         ),
       )
     : undefined;
+  const env =
+    options.env === undefined ? scrubbed : { ...(scrubbed ?? process.env), ...options.env };
   const child = spawn(bin, ["--profile", PROFILE_NAME, ...options.args], {
     stdio: "inherit",
     shell: process.platform === "win32",

@@ -107,10 +107,25 @@
 | 遥测       | ✅ OTel                        | ✅                             | ✅ 复用 DSH（默认关）                                | —                   |
 | 测试与 e2e | 内部                           | 内部                           | ✅ 单测 + mock LLM + node-pty 真终端 e2e（公开可跑） | 差异化点            |
 
-## 9. 结论：对标状态
+## 9. 命令 UX（2026-08 优化后）
+
+| 面                 | Claude Code                       | Kimi Code CLI               | DSHT                                      | 说明                         |
+| ------------------ | --------------------------------- | --------------------------- | ----------------------------------------- | ---------------------------- |
+| 斜杠命令短别名     | ➖（无 aliases，靠 `/` 补全菜单） | ✅ 精确别名（`/q` `/h` 等） | ✅ 别名 + **唯一前缀解析**                | 前缀解析为两家都没有的差异化 |
+| `!` shell 直通     | ✅ `!cmd`                         | ✅ `!` 进入 shell 模式      | ✅ `!cmd` 前缀直通                        | 输出回显 transcript          |
+| 会话 id 前缀恢复   | ➖                                | ➖                          | ✅ `/resume <prefix>`                     | 歧义时列出候选               |
+| `-y` 短旗标        | ➖                                | ✅ `-y/--yolo`              | ✅ `-y`（= --dangerously-skip-approvals） | —                            |
+| `--plan` 启动旗标  | ➖                                | ✅ `--plan`                 | ✅ `-P/--plan`（交互）                    | 挂载后自动执行 DSH `/plan`   |
+| `--mock` 开发捷径  | ➖                                | ➖                          | ✅ `dsht --mock`                          | 启动器注入 env + 默认模型    |
+| `/` 实时补全选择器 | ✅ 输入补全                       | ✅ 实时过滤列表             | 🔜（路线图）                              | 本次未做，见设计 04          |
+
+详见 `docs/design/04-command-ux.md`。
+
+## 10. 结论：对标状态
 
 **已对等**：交互 TUI、headless+stream-json、会话恢复/列表/导出、审批与提问（含并发安全）、
-权限三档、斜杠命令、MCP client、子代理/workflow/goal/todo（继承自 DSH）、主题系统、多模型。
+权限三档、斜杠命令（别名+前缀解析）、`!` shell 直通、MCP client、
+子代理/workflow/goal/todo（继承自 DSH）、主题系统、多模型。
 
 **明确落后**（按差距排序，全部有路线图）：
 
@@ -119,8 +134,9 @@
 
 **明确领先（对手没有）**：
 
-1. run_code 代码执行模式（模型写 TS/Python 调用工具，TUI 原生渲染）；
-2. subagent_fork（继承上下文的子代理）+ workflow/ralph 编排 + CAS goal 长目标，三件套一体化；
-3. 与 DSH Web 共享同一会话存储（双面互切潜力）；
-4. Windows 一等公民（pwsh 工具、Windows ACL 沙箱、Windows 终端实测）；
-5. 公开可跑的无 key e2e（mock LLM + PTY）。
+1. 斜杠命令唯一前缀解析（`/se` → `/sessions`）+ 会话 id 前缀恢复，两家都没有；
+2. run_code 代码执行模式（模型写 TS/Python 调用工具，TUI 原生渲染）；
+3. subagent_fork（继承上下文的子代理）+ workflow/ralph 编排 + CAS goal 长目标，三件套一体化；
+4. 与 DSH Web 共享同一会话存储（双面互切潜力）；
+5. Windows 一等公民（pwsh 工具、Windows ACL 沙箱、Windows 终端实测）；
+6. 公开可跑的无 key e2e（mock LLM + PTY）。

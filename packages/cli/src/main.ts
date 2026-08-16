@@ -52,7 +52,8 @@ export function main(argv: string[]): void {
     'arguments forwarded to dsh --profile tui (for example --print "task")',
   );
   program.action((args: string[]) => {
-    runDsht({ args })
+    const forwarded = forwardMockArgs(args);
+    runDsht({ args: forwarded.args, env: forwarded.env })
       .then((code) => {
         process.exitCode = code;
       })
@@ -63,4 +64,26 @@ export function main(argv: string[]): void {
   });
 
   program.parse(argv);
+}
+
+/**
+ * `--mock` is a launcher-level shortcut: the mock LLM route must be enabled
+ * by env before dsh boots (the bundle reads DSH_MOCK_LLM at config time), so
+ * the launcher strips the flag, sets the env for the spawned dsh, and fills
+ * in the mock provider/model defaults when they were not given explicitly.
+ */
+export function forwardMockArgs(args: string[]): {
+  args: string[];
+  env?: Record<string, string>;
+} {
+  if (!args.includes("--mock")) return { args };
+  const rest = args.filter((arg) => arg !== "--mock");
+  const hasModel = rest.some((arg) => arg === "--model" || arg === "-m");
+  const hasProvider = rest.some((arg) => arg === "--provider");
+  const filled = [
+    ...rest,
+    ...(hasProvider ? [] : ["--provider", "mock"]),
+    ...(hasModel ? [] : ["--model", "mock-v1"]),
+  ];
+  return { args: filled, env: { DSH_MOCK_LLM: "1" } };
 }

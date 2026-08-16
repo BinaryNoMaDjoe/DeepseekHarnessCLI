@@ -109,6 +109,75 @@ describe("bundle commands", () => {
     expect(resume).toHaveBeenCalledWith("session-abc");
   });
 
+  it("registers the short aliases for every session command", () => {
+    const { deps } = makeDeps();
+    const commands = buildCommands(deps);
+    const expected: Array<[string, string]> = [
+      ["sessions", "s"],
+      ["resume", "r"],
+      ["new", "n"],
+      ["export", "e"],
+      ["status", "st"],
+      ["theme", "t"],
+      ["model", "m"],
+      ["plan", "p"],
+      ["goal", "g"],
+      ["compact", "c"],
+      ["feedback", "f"],
+    ];
+    for (const [name, alias] of expected) {
+      expect(find(commands, name)?.aliases, name).toContain(alias);
+    }
+  });
+
+  it("/resume falls back to unique prefix matching", async () => {
+    const adapter = createFakeAdapter();
+    adapter.listSessions = vi.fn(async () => [
+      { id: "session-abcdef", title: "old work" },
+      { id: "session-zzzzzz", title: "other" },
+    ]) as never;
+    const client = createDshClient({ adapter });
+    const resume = vi.spyOn(client, "resumeSession");
+    resume.mockRejectedValueOnce(new Error("unknown session: session-a"));
+    const { deps } = makeDeps({ adapter: adapter as unknown as CommandDeps["adapter"], client });
+    const commands = buildCommands(deps);
+    const emitted: string[] = [];
+    const context = {
+      agent: null,
+      repl: null as never,
+      emitLocal: (text: string) => emitted.push(text),
+    };
+    await find(commands, "resume")!.run(["session-a"], context);
+    expect(resume).toHaveBeenCalledTimes(2);
+    expect(resume).toHaveBeenNthCalledWith(2, "session-abcdef");
+    expect(emitted.some((line) => line.includes("resumed session-abcdef"))).toBe(true);
+  });
+
+  it("/resume lists candidates when a prefix is ambiguous", async () => {
+    const adapter = createFakeAdapter();
+    adapter.listSessions = vi.fn(async () => [
+      { id: "session-abcdef", title: "old work" },
+      { id: "session-abcxyz", title: "other" },
+    ]) as never;
+    const client = createDshClient({ adapter });
+    const resume = vi.spyOn(client, "resumeSession");
+    resume.mockRejectedValue(new Error("unknown session: session-a"));
+    const { deps } = makeDeps({ adapter: adapter as unknown as CommandDeps["adapter"], client });
+    const commands = buildCommands(deps);
+    const emitted: string[] = [];
+    const context = {
+      agent: null,
+      repl: null as never,
+      emitLocal: (text: string) => emitted.push(text),
+    };
+    await find(commands, "resume")!.run(["session-a"], context);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(emitted.some((line) => line.includes("multiple sessions match /resume session-a"))).toBe(
+      true,
+    );
+    expect(emitted.some((line) => line.includes("session-abcdef"))).toBe(true);
+  });
+
   it("unknown slash arguments surface local errors", async () => {
     const { deps } = makeDeps({
       themes: {

@@ -23,6 +23,7 @@ dsht install --link <checkout>/packages/bundle   # 开发：link 本地 bundle
 dsht uninstall          # 删除 tui profile
 dsht doctor             # 安装事实（profile 目录、是否已装）
 dsht <args...>          # 等价于 dsh --profile tui <args...>（缺失 profile 自动供给）
+dsht --mock             # 演示/测试捷径：注入 DSH_MOCK_LLM=1 并补 mock provider/model
 ```
 
 ## 2. 运行形态
@@ -46,7 +47,8 @@ dsht <args...>          # 等价于 dsh --profile tui <args...>（缺失 profile
 -m, --model <model>           本次会话模型
     --provider <provider>     本次会话 provider
     --approval <policy>       headless 审批策略：deny | ask | allow（默认 deny）
-    --dangerously-skip-approvals   等价 --approval allow
+-y, --dangerously-skip-approvals   等价 --approval allow（Kimi -y 同款短旗标）
+-P, --plan                  初始会话挂载后自动进入计划模式（仅交互 TUI）
     --theme <name>            TUI 主题（默认读取环境/配置）
     --list-sessions           列出持久化会话并退出
 -h, --help                    帮助
@@ -56,21 +58,35 @@ dsht <args...>          # 等价于 dsh --profile tui <args...>（缺失 profile
 
 ## 4. 斜杠命令（完整清单）
 
-| 命令                      | 行为                                                           |
-| ------------------------- | -------------------------------------------------------------- |
-| `/help`                   | 列出全部命令                                                   |
-| `/exit` `/quit`           | 结束会话退出（exit 0）                                         |
-| `/model [provider model]` | 无参数打开双字段对话框（Tab 切换、Enter 提交）；带参数直接设置 |
-| `/sessions`               | 打开会话选择对话框（可搜索、❯ 指针、Enter 恢复）               |
-| `/resume <id>`            | 切换至指定会话（旧句柄先销毁，历史回放）                       |
-| `/new`                    | 新建会话（销毁当前）                                           |
-| `/export`                 | 导出当前会话 JSONL（时间戳文件名，不覆盖）                     |
-| `/status`                 | 显示会话/模型/权限模式                                         |
-| `/theme [name]`           | 无参数打开主题选择对话框；`/theme <name>` 直接切换             |
-| `/plan`                   | 进入计划模式（委托 DSH plan-mode）                             |
-| `/goal`                   | 管理长目标（委托 DSH goal 命令）                               |
-| `/compact`                | 压缩上下文（委托 DSH compaction）                              |
-| `/feedback`               | 记录会话反馈（委托 DSH）                                       |
+命令支持**短别名**（括号内）与**唯一前缀**：`/se` → `/sessions`、`/ex` → `/exit`；
+多前缀命中时报歧义并列出候选。裸 `/` 直接打印帮助。
+
+| 命令                      | 别名           | 行为                                                           |
+| ------------------------- | -------------- | -------------------------------------------------------------- |
+| `/help`                   | `h` `?`        | 列出全部命令（含别名与用法）                                   |
+| `/exit`                   | `quit` `q` `x` | 结束会话退出（exit 0）                                         |
+| `/model [provider model]` | `m`            | 无参数打开双字段对话框（Tab 切换、Enter 提交）；带参数直接设置 |
+| `/sessions`               | `s`            | 打开会话选择对话框（可搜索、❯ 指针、Enter 恢复）               |
+| `/resume <id-or-prefix>`  | `r`            | 切换至指定会话（旧句柄先销毁，历史回放）；支持 id 前缀匹配     |
+| `/new`                    | `n`            | 新建会话（销毁当前）                                           |
+| `/export`                 | `e`            | 导出当前会话 JSONL（时间戳文件名，不覆盖）                     |
+| `/status`                 | `st`           | 显示会话/模型/权限模式                                         |
+| `/theme [name]`           | `t`            | 无参数打开主题选择对话框；`/theme <name>` 直接切换             |
+| `/plan`                   | `p`            | 进入计划模式（委托 DSH plan-mode）                             |
+| `/goal`                   | `g`            | 管理长目标（委托 DSH goal 命令）                               |
+| `/compact`                | `c`            | 压缩上下文（委托 DSH compaction）                              |
+| `/feedback`               | `f`            | 记录会话反馈（委托 DSH）                                       |
+
+### 4.1 `!` shell 直通
+
+输入以 `!` 开头的行在本地 shell 执行（Windows 用 `%COMSPEC%`/cmd.exe，
+POSIX 用 `$SHELL`/sh），输出回显进 transcript：`$ <命令>` 起头、非零退出报
+`[exit N]`、超 8KB 截断。`!` 输入进历史（↑ 可召回）。
+
+```text
+!git status
+!pnpm test
+```
 
 交互键位：`Enter` 提交、`Ctrl+Enter` 换行、`↑/↓` 历史、`←/→` 移动光标、
 `Backspace/Delete` 编辑、`Esc` 清空输入（空输入时取消当前回合）、`Ctrl+C` 退出。
@@ -159,6 +175,8 @@ v1（11 键完整 schema）仍兼容；完整 token 清单见 `packages/tui/src/
 ## 8. mock 模型（无 key 测试/演示）
 
 ```bash
+# 全部等价
+dsht --mock --print "hi"
 DSH_MOCK_LLM=1 dsh --profile tui --print "hi" --provider mock --model mock-v1
 DSH_MOCK_LLM_REPLY="固定回复"          # 覆盖回复文本（默认回显你的任务）
 DSH_MOCK_LLM_TOOL='{"name":"todo_write","arguments":{"todos":[]}}'  # 首轮触发一次工具调用
@@ -191,7 +209,7 @@ DSH_MOCK_LLM_TOOL='{"name":"todo_write","arguments":{"todos":[]}}'  # 首轮触�
 ```bash
 pnpm build && pnpm typecheck && pnpm lint && pnpm test   # 全量校验
 node scripts/e2e-install.mjs    # 供给 .tmp profile
-node scripts/e2e-tui.mjs        # PTY 交互冒烟（/help → /theme → 回复 → /exit）
+node scripts/e2e-tui.mjs        # PTY 交互冒烟（/help → /theme → 回复 → !shell → /h /st → /q）
 node scripts/e2e-resume.mjs     # 跨进程恢复 + 会话列表冒烟
 node scripts/demo-frame.mjs     # 抓取一张新界面演示帧到 .tmp/demo-frame.txt
 ```

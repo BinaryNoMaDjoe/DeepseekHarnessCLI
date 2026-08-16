@@ -85,7 +85,19 @@ try {
   term.write("hello tui\r");
   await waitFor((text) => text.includes("mock reply: hello tui"), 60000);
   console.log("[e2e] reply rendered in the TUI");
-  term.write("/exit\r");
+  // Shell passthrough: !-prefixed input runs locally, not through the model.
+  term.write("!echo dsht-shell-ok\r");
+  await waitFor((text) => text.includes("dsht-shell-ok"), 30000);
+  console.log("[e2e] ! shell passthrough executed locally");
+  // Short alias and status shortcut.
+  term.write("/h\r");
+  await waitFor((text) => text.includes("available commands"), 20000);
+  console.log("[e2e] /h alias rendered the help list");
+  term.write("/st\r");
+  await waitFor((text) => text.includes("permission mode"), 20000);
+  console.log("[e2e] /st alias rendered the status");
+  // /q quits through the exit alias.
+  term.write("/q\r");
   await waitFor(() => exited, 15000);
   console.log("[e2e] exited with code " + String(exitCode));
   if (exitCode !== 0) {

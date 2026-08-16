@@ -35,6 +35,21 @@ function replayHistory(
   replay?.(emit);
 }
 
+/** Attach a session handle and dispose the previous one, replaying history. */
+async function attachSession(
+  deps: CommandDeps,
+  emitLocal: (text: string) => void,
+  id: string,
+): Promise<void> {
+  // Attach the new session FIRST (failure keeps the old one alive),
+  // then dispose the old handle; late old-session events are gated
+  // by the adapter's session filter.
+  const handle = await deps.client.resumeSession(id);
+  replayHistory(handle, (event) => deps.client.events.emit(event));
+  await deps.client.current?.dispose?.();
+  emitLocal("resumed " + id);
+}
+
 export function buildCommands(deps: CommandDeps): SlashCommand[] {
   const delegate = (name: string, args: string[], emitLocal: (text: string) => void): void => {
     const handle = deps.client.current;
@@ -55,10 +70,12 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
       emitLocal("commands service is not mounted");
       return;
     }
+    // A live signal is required: DSH command handlers read it during
+    // narration injection (undefined crashed the plan command).
     void commands
-      .execute(handle.agent, "/" + name + " " + args.join(" "), undefined)
+      .execute(handle.agent, "/" + name + " " + args.join(" "), new AbortController().signal)
       .then((result) => {
-        if (result?.kind === "error" && result.text !== undefined) emitLocal(result.text);
+        if (result?.text !== undefined) emitLocal(result.text);
       })
       .catch((error: unknown) => {
         emitLocal(error instanceof Error ? error.message : String(error));
@@ -68,6 +85,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
   return [
     {
       name: "model",
+      aliases: ["m"],
       description: "show or set the default model (dialog)",
       async run(args, context) {
         if (args.length > 0) {
@@ -116,6 +134,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "sessions",
+      aliases: ["s"],
       description: "pick a persisted session (resumes it)",
       async run(_args, context) {
         let sessions;
@@ -147,13 +166,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
         }
         const id = selected[0]!;
         try {
-          // Attach the new session FIRST (failure keeps the old one alive),
-          // then dispose the old handle; late old-session events are gated
-          // by the adapter's session filter.
-          const handle = await deps.client.resumeSession(id);
-          replayHistory(handle, (event) => deps.client.events.emit(event));
-          await deps.client.current?.dispose?.();
-          context.emitLocal("resumed " + id);
+          await attachSession(deps, context.emitLocal, id);
         } catch (error) {
           context.emitLocal(error instanceof Error ? error.message : String(error));
         }
@@ -161,25 +174,57 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "resume",
-      description: "switch to a persisted session (/resume <id>)",
+      aliases: ["r"],
+      description: "switch to a persisted session (/resume <id-or-prefix>)",
       async run(args, context) {
         const id = args[0];
         if (id === undefined || id === "") {
           context.emitLocal("usage: /resume <session-id> — list ids with /sessions");
           return;
         }
+        // Exact id first (fast path); on failure fall back to prefix search.
         try {
-          const handle = await deps.client.resumeSession(id);
-          replayHistory(handle, (event) => deps.client.events.emit(event));
-          await deps.client.current?.dispose?.();
-          context.emitLocal("resumed " + id);
-        } catch (error) {
-          context.emitLocal(error instanceof Error ? error.message : String(error));
+          await attachSession(deps, context.emitLocal, id);
+          return;
+        } catch (exactError) {
+          const message = exactError instanceof Error ? exactError.message : String(exactError);
+          let sessions;
+          try {
+            sessions = await deps.adapter.listSessions(undefined, 100);
+          } catch {
+            context.emitLocal(message);
+            return;
+          }
+          const matches = sessions.filter((session) => session.id.startsWith(id));
+          if (matches.length === 1) {
+            try {
+              await attachSession(deps, context.emitLocal, matches[0]!.id);
+              return;
+            } catch (error) {
+              context.emitLocal(error instanceof Error ? error.message : String(error));
+              return;
+            }
+          }
+          if (matches.length === 0) {
+            context.emitLocal(message);
+            return;
+          }
+          const rows = matches
+            .slice(0, 8)
+            .map((session) => "  " + session.id + "  " + (session.title ?? "(untitled)"));
+          context.emitLocal(
+            "multiple sessions match /resume " +
+              id +
+              ":\n" +
+              rows.join("\n") +
+              (matches.length > 8 ? "\n  … " + String(matches.length - 8) + " more" : ""),
+          );
         }
       },
     },
     {
       name: "new",
+      aliases: ["n"],
       description: "start a fresh session (disposes the current one)",
       async run(_args, context) {
         try {
@@ -194,6 +239,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "export",
+      aliases: ["e"],
       description: "write this session log to ./dsht-session-<id>.jsonl",
       async run(_args, context) {
         const handle = deps.client.current;
@@ -210,6 +256,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "status",
+      aliases: ["st"],
       description: "show session, model, and permission mode",
       async run(_args, context) {
         const handle = deps.client.current;
@@ -228,6 +275,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "theme",
+      aliases: ["t"],
       description: "pick or switch the theme (dialog)",
       async run(args, context) {
         const name = args[0];
@@ -278,6 +326,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "plan",
+      aliases: ["p"],
       description: "enter plan mode (delegates to the dsh plan-mode command)",
       async run(args, context) {
         delegate("plan", args, context.emitLocal);
@@ -285,6 +334,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "goal",
+      aliases: ["g"],
       description: "manage the current goal (delegates to the dsh goal command)",
       async run(args, context) {
         delegate("goal", args, context.emitLocal);
@@ -292,6 +342,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "compact",
+      aliases: ["c"],
       description: "compact the context (delegates to the dsh compact command)",
       async run(args, context) {
         delegate("compact", args, context.emitLocal);
@@ -299,6 +350,7 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "feedback",
+      aliases: ["f"],
       description: "record feedback on the session (delegates to dsh)",
       async run(args, context) {
         delegate("feedback", args, context.emitLocal);
