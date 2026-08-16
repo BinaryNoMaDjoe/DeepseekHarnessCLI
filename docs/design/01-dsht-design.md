@@ -63,25 +63,25 @@ DSH 会话事件（`session/event`，作用域过滤，seed 不重放）经 `bun
 翻译为 SDK 事件。**冷恢复**：`attach` 发出 `session/ready` 后，runner 用
 `DshAgentHandle.replayHistory` 全量回放 `session.events`（seed 不再 firehose 重发）。
 
-| DSH 事件                                  | SDK 事件                        | 说明                                                                                                                   |
-| ----------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `turn/start`                              | `turn/start`                    | 状态栏进入 running                                                                                                     |
-| `turn/end`                                | `turn/end`                      | reason 映射：completed→completed；aborted/interrupted→cancelled；blocked/max-tokens→blocked；error→error{code,message} |
-| `step/start` / `step/end`                 | 同名                            | 保留（统计/未来渲染）                                                                                                  |
-| `user/message`                            | **丢弃**                        | 循环自己会写；TUI 本地回显，避免双份                                                                                   |
-| `assistant/chunk`（text/reasoning-delta） | `assistant/chunk`               | 流式缓冲进 SessionStore.streaming                                                                                      |
-| `assistant/chunk`（tool-call-delta）      | 丢弃                            | 工具卡片由 tool/call + tool/result 渲染                                                                                |
-| `assistant/message`                       | `assistant/message`（含 usage） | 结束流式缓冲、记录 token                                                                                               |
-| `tool/call`                               | `tool/call`                     | `arguments` 为模型原始 JSON 字符串                                                                                     |
-| `tool/result`                             | `tool/result`                   | ok = 无 error；content 为文本块拼接；与卡片按最近未决调用配对（DSH 结果事件不带 callId）                               |
-| `todo/write`                              | `todo/write`                    | 保留                                                                                                                   |
-| `plan/mode`                               | `plan/mode`                     | 需 import dsh-plan-mode 类型以加载事件扩充                                                                             |
-| `agent/status`（Scoped<Agent> 总线）      | `agent/status`                  | 在 agent 作用域 setup 里订阅                                                                                           |
-| `agent/error`                             | `agent/error`                   | 同上                                                                                                                   |
-| （surface 自有）                          | `surface/exit`                  | REPL /exit → store.exited → App unmount                                                                                |
-| （surface 自有）                          | `surface/local` / `surface/git` | 本地提示直接渲染为 transcript 项；git 徽标异步更新 footer                                                              |
-| （surface 自有）                          | `session/ready`                 | client.attach 发出，全量重置 store（保留打开的对话框）                                                                 |
-| （surface 自有）                          | `session/model`                 | attach 时跟随 ready 发出，状态栏显示会话实际模型                                                                       |
+| DSH 事件                                  | SDK 事件                        | 说明                                                                                                                                                                                        |
+| ----------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `turn/start`                              | `turn/start`                    | 状态栏进入 running                                                                                                                                                                          |
+| `turn/end`                                | `turn/end`                      | reason 映射：completed→completed；aborted/interrupted→cancelled；blocked/max-tokens→blocked；error→error{code,message}                                                                      |
+| `step/start` / `step/end`                 | 同名                            | 保留（统计/未来渲染）                                                                                                                                                                       |
+| `user/message`                            | **丢弃**                        | 循环自己会写；TUI 本地回显，避免双份                                                                                                                                                        |
+| `assistant/chunk`（text/reasoning-delta） | `assistant/chunk`               | 流式缓冲进 SessionStore.streaming                                                                                                                                                           |
+| `assistant/chunk`（tool-call-delta）      | 丢弃                            | 工具卡片由 tool/call + tool/result 渲染                                                                                                                                                     |
+| `assistant/message`                       | `assistant/message`（含 usage） | 结束流式缓冲、记录 token                                                                                                                                                                    |
+| `tool/call`                               | `tool/call`                     | `arguments` 为模型原始 JSON 字符串                                                                                                                                                          |
+| `tool/result`                             | `tool/result`                   | ok = 无 error；content 为 ToolResultBlock 内层文本块拼接；callId 取自 `message.source.callId` / `content[0].toolCallId`（真实可恢复）；id 缺失时按最近未决调用 LIFO 配对（旧日志/回放兜底） |
+| `todo/write`                              | `todo/write`                    | 保留                                                                                                                                                                                        |
+| `plan/mode`                               | `plan/mode`                     | 需 import dsh-plan-mode 类型以加载事件扩充                                                                                                                                                  |
+| `agent/status`（Scoped<Agent> 总线）      | `agent/status`                  | 在 agent 作用域 setup 里订阅                                                                                                                                                                |
+| `agent/error`                             | `agent/error`                   | 同上                                                                                                                                                                                        |
+| （surface 自有）                          | `surface/exit`                  | REPL /exit → store.exited → App unmount                                                                                                                                                     |
+| （surface 自有）                          | `surface/local` / `surface/git` | 本地提示直接渲染为 transcript 项；git 徽标异步更新 footer                                                                                                                                   |
+| （surface 自有）                          | `session/ready`                 | client.attach 发出，全量重置 store（保留打开的对话框）                                                                                                                                      |
+| （surface 自有）                          | `session/model`                 | attach 时跟随 ready 发出，状态栏显示会话实际模型                                                                                                                                            |
 
 ## 5. 会话生命周期
 
@@ -153,7 +153,7 @@ bundle 解析双锚点：安装优先、profile 次之；`dsh-base` 来自安装
 
 ## 10.5 主题系统
 
-- 契约：`ColorPalette` 30 语义 token（四级灰度文字层级、行级+词级 diff、子代理 8 色、
+- 契约：`ColorPalette` 27 语义 token（四级灰度文字层级、行级+词级 diff、子代理 8 色、
   shimmer 变体；黑白=品牌，彩色仅功能性语义）；`buildTheme` 编译为可调用 token。
 - 内置主题：`auto`（OSC11/OSC997 探测）+ `deepseek-dark`/`deepseek-light` +
   `deepseek-dark-daltonized`/`deepseek-light-daltonized`（色弱友好）。
@@ -183,8 +183,10 @@ bundle 解析双锚点：安装优先、profile 次之；`dsh-base` 来自安装
 
 - **行缓冲终端**：部分环境（cmd/conpty 链）按行投递输入块，Ink 单块到达（实测）。
   缓解：InputBox 按换行符分割提交，同时兼容真实终端 key.return 与多行粘贴。
-- **工具结果无 callId**：DSH `tool/result` 事件不带 callId，并行时配对歧义。
-  缓解：LIFO 配对最近未决调用（单工具流正确；并行场景列为已知限制）。
+- **工具结果配对**：DSH `tool/result` 的 callId 在 `message.source.callId` 与
+  `content[0].toolCallId`（审计后修正，见 docs/audit §9）。适配器透传真实 id，
+  store 精确匹配；id 缺失（旧日志/回放）时 LIFO 回退并仅在 id 为空时生效，
+  并行场景的歧义保留为已知限制。
 - **session/event 作用域**：根作用域收不到 agent 作用域事件；转发器必须在
   `agents.create` 的 `setup(agentCtx)` 里订阅（已实现），resume 后补挂。
 - **`workspace:*` 依赖**：profile 外部无法解析 → 跨包依赖用相对 `link:`（发布前换版本）。

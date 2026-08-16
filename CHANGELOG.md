@@ -5,6 +5,44 @@
 命令 UX 优化：短别名、唯一前缀解析、`!` shell 直通与 CLI 短旗标
 （对照 Claude Code 与 Kimi Code 命令面，见 docs/design/04-command-ux.md）。
 
+### 修复（深度审查驱动，2026-08）
+
+- **Critical**：`tool/result` 翻译读取层级错误 —— 真实 `ToolResultMessage.content =
+[ToolResultBlock]`（`{type:'tool-result', toolCallId, content}`），旧代码按 `type==='text'`
+  过滤外层块导致工具结果永远为空；callId 实为 `message.source.callId` /
+  `content[0].toolCallId`（审计 §9「不带 callId」为误读，已修正）。适配器现透传真实
+  callId 与内层文本；store 精确匹配优先、LIFO 仅作 id 缺失兜底；translate 测试夹具
+  改为真实形状。
+- **Critical**：`/new` `/resume` `/sessions` 销毁的是新挂接句柄而非旧句柄（fbea7e3 回归，
+  与设计 §5 相反）——先捕获旧句柄再 attach、回放后销毁旧句柄；补 dispose 目标回归测试。
+- **Critical**：会话切换的鸭子类型 `replayHistory` 脱绑 `this` 调用（ESM 严格模式下
+  `this === undefined`，`DshAgentHandle.replayHistory` 崩溃）——改 `.call(handle, emit)`，
+  补绑定回归测试；e2e-tui 增补 `/new` 全链路冒烟。
+- **Major**：会话标题恒为 "(untitled)" —— `readTitle` 返回 `SessionTitleSnapshot` 对象
+  而非 string，`listSessions` 取 `.title`。
+- **Major**：并发审批 abort 竞态 —— bridge 的 `cancelCurrent(deny)` 只认队列头，排队请求
+  的 abort 会误杀活跃请求。broker 增 `request(request, signal?)` 按请求定位取消 +
+  `approval/cancelled` 事件；TUI 订阅该事件收敛弹窗（修复审批 abort 后弹窗悬挂，
+  设计 §6 承诺兑现）；bridge 改为透传 `request.signal`。
+- **Major**：REPL 本地输出以 `assistant/chunk` 泄漏进 streaming 缓冲并串入下一条助手
+  消息——改发 `surface/local`（设计 §4 契约）。
+- **Major**：对话框重入结算错 Promise（僵尸对话框 + 悬挂 Promise）——`openDialog`
+  改为「先结算旧 resolver、再存新 resolver」并接收 resolver 参数；补配对回归测试。
+- **Major**：`package.json` 的 `types` 指向不存在的 `lib/types/index.d.ts`
+  （tsc 无 declarationDir 时声明与 JS 同目录）——sdk/tui/bundle 改为 `lib/index.d.ts`；
+  build 前清理 lib/ 消除陈旧产物（如已删除的 keymap.js）。
+- 用法错误退出码改为 2（设计 §7：0 完成 / 1 turn 错误 / 2 用法错误）；
+  agent/error 载荷按 string/Error/{code,message} 规整不再丢信息；
+  `forwardMockArgs` 支持 `--model=x` 并校验值存在；cli 安装/转发以 cmd.exe 包裹替代
+  `shell:true`+args（消除 DEP0190 弃用警告）；e2e-install 嵌套会话强制 `.tmp/dsh-home`。
+- store 不可变性：LIFO 回退不再原地改写旧状态；重复 callId 不覆盖已结算调用；
+  `turn/end` 合并双 set、呈现 blocked reason、持久化 cancelled/error turn 的 reasoning；
+  fold 显式记录 step/agent-status（保留）；v1 主题具名色（white/gray…）真实产出 ANSI；
+  wrapText 硬断超长词；ProgressBar 八分之一刻度 off-by-one；FieldsDialog 空字段守卫；
+  App 退出 effect 补依赖；detectTerminalScheme 结算后摘除监听并恢复 raw 模式；
+  删除死 token `shellMode`（契约 27 token，设计 §10.5 同步）。
+- mock LLM CallId 按调用递增，避免同 turn 内 id 冲突。
+
 ### 新增
 
 - 斜杠命令短别名与唯一前缀解析（sdk/repl.ts）：`/h /s /r /n /e /st /t /m /p /g /c /f`
@@ -15,7 +53,8 @@
 - CLI 短旗标：`-y`（--dangerously-skip-approvals）、`-P/--plan`（交互启动进计划模式）；
   dsht 启动器新增 `--mock`（注入 DSH_MOCK_LLM + mock provider/model 默认值）。
 - 单测 +26（SDK repl 别名/前缀/歧义/shell、bundle 别名表/resume 前缀/local-shell），
-  e2e-tui 增补 `!echo`、`/h`、`/st`、`/q` 冒烟。
+  e2e-tui 增补 `!echo`、`/h`、`/st`、`/q` 冒烟；本轮审查再补：dispose 目标/绑定回归、
+  审批取消/排队 abort、对话框配对、tool-result 真实形状、store blocked/reasoning 等。
 - 修复 `/plan` 委托传 `undefined` signal 导致 narration 注入崩溃（
   `Cannot read properties of undefined (reading 'aborted')`）；委托命令现回显 success 文本。
 

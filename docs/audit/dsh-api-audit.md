@@ -53,7 +53,10 @@
   **seed 回放不 emit**——冷恢复必须读 `session.events` 全量）。
 - 事件词汇表：`turn/start|end`、`step/start|end`、`user/message`（含 source 分类）、
   `assistant/chunk`、`assistant/message`（含 `usage: TokenUsage`）、`tool/call`（`{callId,name,arguments:string}`）、
-  `tool/result`（`{message: ToolResultMessage, error?, meta?}`，**无 callId**）、`todo/write`、
+  `tool/result`（`{message: ToolResultMessage, error?, meta?}`；callId 在
+  `message.source.callId` 与 `message.content[0].toolCallId` ——
+  `ToolResultBlock = {type:'tool-result', toolCallId, content: ContentBlock[], isError?}`，
+  **callId 可恢复，非缺失**）、`todo/write`、
   `request/header|context`、`session/end-seed`；扩充：`approval/asked|decided|policy`、
   `command/run|done`、`plan/mode`（dsh-plan-mode）、`goal/change`。
 - 持久化：`$DSH_HOME/sessions/<projectKey>/<encodeSegment(id)>/session.jsonl(.zstd)`；
@@ -120,23 +123,23 @@
 
 ## 9. 审计后修正的设计假设（实现前 vs 审计后）
 
-| 初版假设                  | 审计事实                                        | 落地                           |
-| ------------------------- | ----------------------------------------------- | ------------------------------ |
-| 审批 = 设置 answerer 对象 | answerer 是 `approval/request` waterfall 监听器 | answerer.ts 按 waterfall 实现  |
-| 提问 provider 可多注册    | 进程内单例                                      | 桥只注册一次                   |
-| 工具调用参数已解析        | `tool/call.arguments` 为原始 JSON 字符串        | SDK ToolCall 用 string         |
-| 工具结果带 callId         | 不带（只有 message/error/meta）                 | LIFO 配对 + 已记录限制         |
-| 恢复时 live 事件会重放    | seed 回放不 emit `session/event`                | replayHistory 全量回放         |
-| 根作用域能收到 agent 事件 | Scoped 过滤                                     | 转发器注册在 `setup(agentCtx)` |
-| 自定义 profile 自动初始化 | 未知 profile 直接报错                           | cli 安装器自建 manifest + pnpm |
-| `!!js !!expr` 可用        | YAML 双标签报错（实测）                         | `!!js (!!expr)`                |
-| CallId 是 string          | 品牌类型 + 构造器                               | `CallId(...)`                  |
-| FinishReason 是字符串     | 对象 `{kind}`                                   | `{kind:'stop'}`                |
-| headless 输出即退出       | 需经 appExit → shutdown                         | 全部退出路径走 io.exit/appExit |
+| 初版假设                  | 审计事实                                                                         | 落地                                     |
+| ------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------- |
+| 审批 = 设置 answerer 对象 | answerer 是 `approval/request` waterfall 监听器                                  | answerer.ts 按 waterfall 实现            |
+| 提问 provider 可多注册    | 进程内单例                                                                       | 桥只注册一次                             |
+| 工具调用参数已解析        | `tool/call.arguments` 为原始 JSON 字符串                                         | SDK ToolCall 用 string                   |
+| 工具结果带 callId         | 顶层 data 无 callId，但 `message.source.callId` / `content[0].toolCallId` 可恢复 | 适配器透传真实 id；LIFO 仅作 id 缺失兜底 |
+| 恢复时 live 事件会重放    | seed 回放不 emit `session/event`                                                 | replayHistory 全量回放                   |
+| 根作用域能收到 agent 事件 | Scoped 过滤                                                                      | 转发器注册在 `setup(agentCtx)`           |
+| 自定义 profile 自动初始化 | 未知 profile 直接报错                                                            | cli 安装器自建 manifest + pnpm           |
+| `!!js !!expr` 可用        | YAML 双标签报错（实测）                                                          | `!!js (!!expr)`                          |
+| CallId 是 string          | 品牌类型 + 构造器                                                                | `CallId(...)`                            |
+| FinishReason 是字符串     | 对象 `{kind}`                                                                    | `{kind:'stop'}`                          |
+| headless 输出即退出       | 需经 appExit → shutdown                                                          | 全部退出路径走 io.exit/appExit           |
 
 ## 10. 已知缺口（本仓库未覆盖的 DSH 能力）
 
 - ACP server（DSH 本体无此面；需自建 `dsh acp`）；MCP server 模式（现有 mcp-client 仅消费方向）。
 - hooks 面（DSH 的 hook 机制经 cordis 事件可映射，未接面）；skills 目录约定未接 TUI 展示。
-- `tool/result` 并行配对（DSH 事件缺 callId）；会话全文搜索（session-query overlay `openAt`）。
+- `tool/result` id 缺失场景（旧日志/回放）的并行配对歧义（LIFO 兜底）；会话全文搜索（session-query overlay `openAt`）。
 - `presentCall/presentResult` 语义化卡片（当前渲染原始文本 + diff 启发式）。
