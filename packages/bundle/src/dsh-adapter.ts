@@ -34,7 +34,7 @@ export interface DshAdapterServices {
   };
   sessionQuery?: {
     listSessions(): Promise<unknown[]>;
-    readTitle(sessionId: string): Promise<string | undefined>;
+    readTitle(sessionId: string): Promise<unknown>;
   };
 }
 
@@ -66,15 +66,10 @@ export function createDshAdapter(
       sessionId,
       meta: { cwd: options.cwd ?? process.cwd() },
       agentOptions: { provider, model },
-      setup: (agentCtx: unknown) => {
-        (
-          installModelSelection as unknown as (
-            ctx: unknown,
-            sel: { current: { provider: string; model: string }; assembled: undefined },
-          ) => void
-        )(agentCtx, {
+      setup: (agentCtx: Parameters<typeof installModelSelection>[0]) => {
+        installModelSelection(agentCtx, {
           current: { provider, model },
-          assembled: void 0,
+          assembled: undefined,
         });
         mountForwarders(agentCtx, sessionId, forward);
         hooks.onSetup?.(agentCtx);
@@ -96,13 +91,11 @@ export function createDshAdapter(
     const resumed = await services.agents.resume({
       resumeSessionId: sid,
       agentOptions: { provider, model },
-      setup: (agentCtx: unknown) => {
-        (
-          installModelSelection as unknown as (
-            ctx: unknown,
-            sel: { current: { provider: string; model: string }; assembled: undefined },
-          ) => void
-        )(agentCtx, { current: { provider, model }, assembled: void 0 });
+      setup: (agentCtx: Parameters<typeof installModelSelection>[0]) => {
+        installModelSelection(agentCtx, {
+          current: { provider, model },
+          assembled: undefined,
+        });
         mountForwarders(agentCtx, sid, forward);
         hooks.onSetup?.(agentCtx);
       },
@@ -123,7 +116,9 @@ export function createDshAdapter(
       const header = (row as { header?: { id?: string; createdAt?: number } }).header;
       const id = header?.id;
       if (typeof id !== "string" || id === "") continue;
-      const title = (await engine.readTitle(id)) ?? undefined;
+      // readTitle resolves a SessionTitleSnapshot object, not a string.
+      const snapshot = (await engine.readTitle(id)) as { title?: string } | undefined;
+      const title = snapshot?.title;
       if (
         query !== undefined &&
         query !== "" &&
@@ -213,19 +208,31 @@ function mountForwarders(
     if (translated !== null) forward(ses.id, translated);
   });
   ctx.on("agent/status", (payload) => {
-    const p = payload as { agent?: { id: string }; status?: string };
+    const p = (payload ?? {}) as { agent?: { id: string }; status?: string };
     if (p.agent?.id !== sessionId || p.status === undefined) return;
     if (p.status === "idle" || p.status === "running") {
       forward(sessionId, { type: "agent/status", detail: { status: p.status } });
     }
   });
   ctx.on("agent/error", (payload) => {
-    const p = payload as { agent?: { id: string }; error?: { code?: string; message?: string } };
+    const p = (payload ?? {}) as {
+      agent?: { id: string };
+      error?: unknown;
+    };
     if (p.agent?.id !== sessionId) return;
-    forward(sessionId, {
-      type: "agent/error",
-      error: { code: p.error?.code ?? "AGENT_ERROR", message: p.error?.message ?? "agent error" },
-    });
+    // DSH's agent/error carries error: unknown (Error | LlmFailure | string);
+    // normalize into the SDK's {code, message} contract without dropping
+    // string-typed failures.
+    const e = p.error as { code?: string; message?: string } | string | undefined;
+    const code =
+      typeof e === "object" && e !== null && typeof e.code === "string" ? e.code : "AGENT_ERROR";
+    const message =
+      typeof e === "string"
+        ? e
+        : typeof e === "object" && e !== null && typeof e.message === "string"
+          ? e.message
+          : "agent error";
+    forward(sessionId, { type: "agent/error", error: { code, message } });
   });
 }
 
@@ -265,23 +272,30 @@ export function translateSessionEvent(event: SessionEvent): SdkEvent | null {
       };
     }
     case "tool/result": {
+      // Real DSH shape (audited types): data.message is a ToolResultMessage
+      // whose single outer block is {type:'tool-result', toolCallId, content:
+      // ContentBlock[]}. The call id lives on message.source.callId and the
+      // block's toolCallId — it is NOT absent.
       const data = event.data as {
-        callId?: string;
         message?: {
-          content?: { type: string; text?: string }[];
-          toolCallId?: string;
-          callId?: string;
+          source?: { callId?: string };
+          content?: {
+            type?: string;
+            toolCallId?: string;
+            content?: { type?: string; text?: string }[];
+          }[];
         };
         error?: { name: string; code: string };
       };
-      const text = (data.message?.content ?? [])
-        .filter((block) => block.type === "text")
-        .map((block) => block.text ?? "")
+      const block = data.message?.content?.[0];
+      const text = (block?.content ?? [])
+        .filter((inner) => inner.type === "text")
+        .map((inner) => inner.text ?? "")
         .join("\n");
       return {
         type: "tool/result",
         call: {
-          id: data.callId ?? data.message?.toolCallId ?? data.message?.callId ?? "",
+          id: data.message?.source?.callId ?? block?.toolCallId ?? "",
           name: "tool",
           arguments: "",
         },
@@ -313,7 +327,9 @@ function mapReason(reason: unknown): TurnReason {
     case "interrupted":
       return { kind: "cancelled" };
     case "blocked":
-      return { kind: "blocked", reason: r.reason };
+      // DSH's blocked reason carries no detail field (audited types); the
+      // SDK type keeps an optional reason for future surfaces.
+      return { kind: "blocked" };
     case "max-tokens":
       return { kind: "blocked", reason: "max-tokens" };
     case "error":

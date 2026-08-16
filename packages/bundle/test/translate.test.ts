@@ -37,15 +37,53 @@ describe("translateSessionEvent", () => {
     ).toEqual({ type: "tool/call", call: { id: "c1", name: "read", arguments: '{"a":1}' } });
   });
 
-  it("maps tool results to ok/content shape", () => {
+  it("maps tool results to ok/content shape (real ToolResultMessage)", () => {
     const translated = translateSessionEvent(
       event("tool/result", {
         turn: 1,
         step: 1,
-        message: { role: "tool", content: [{ type: "text", text: "done" }] },
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "c1",
+              content: [
+                { type: "text", text: "file contents" },
+                { type: "text", text: "tail" },
+              ],
+            },
+          ],
+        },
       }),
     );
-    expect(translated).toMatchObject({ type: "tool/result", ok: true, content: "done" });
+    expect(translated).toEqual({
+      type: "tool/result",
+      call: { id: "c1", name: "tool", arguments: "" },
+      ok: true,
+      content: "file contents\ntail",
+    });
+  });
+
+  it("marks tool results with errors and keeps the call id", () => {
+    const translated = translateSessionEvent(
+      event("tool/result", {
+        turn: 1,
+        step: 1,
+        message: {
+          role: "user",
+          content: [{ type: "tool-result", toolCallId: "c2", content: [] }],
+        },
+        error: { name: "ToolError", code: "E_FAIL" },
+      }),
+    );
+    expect(translated).toMatchObject({
+      type: "tool/result",
+      call: { id: "c2" },
+      ok: false,
+      content: "",
+      error: { name: "ToolError", code: "E_FAIL" },
+    });
   });
 
   it("drops user messages (the TUI echoes them locally)", () => {
