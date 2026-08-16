@@ -5,18 +5,21 @@ import { useTheme } from "../theme-context.js";
 import { BlockText } from "./BlockText.js";
 import { ToolCallView } from "./ToolCallView.js";
 
-export function MessageView({
-  item,
-  width,
-}: {
+export interface MessageViewProps {
   item: TranscriptItem;
   width: number;
-}): React.JSX.Element {
+  sessionRunning: boolean;
+}
+
+export function MessageView({ item, width, sessionRunning }: MessageViewProps): React.JSX.Element {
   const theme = useTheme();
   if (item.kind === "user") {
     return (
       <Box flexDirection="column">
-        <Text>{theme.user("❯ " + item.text)}</Text>
+        <Text>
+          {theme.user("❯ ")}
+          {theme.bold(item.text)}
+        </Text>
       </Box>
     );
   }
@@ -31,9 +34,9 @@ export function MessageView({
     <Box flexDirection="column">
       {item.text !== "" ? <BlockText text={item.text} width={width} /> : null}
       {item.toolCalls.map((call) => (
-        <ToolCallView key={call.id} call={call} width={width} />
+        <ToolCallView key={call.id} call={call} width={width} sessionRunning={sessionRunning} />
       ))}
-      {!item.finished ? <Text>{theme.secondary("▍")}</Text> : null}
+      {!item.finished && sessionRunning ? <Text>{theme.secondary("▍")}</Text> : null}
     </Box>
   );
 }

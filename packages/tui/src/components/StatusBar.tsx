@@ -6,40 +6,52 @@ import { Spinner } from "./Spinner.js";
 
 export interface StatusBarProps {
   running: boolean;
-  /** The session's actual model (store) — preferred over the fallback. */
   model: { provider: string; model: string } | null;
-  /** Fallback selection (bundle-provided default) when the store is empty. */
   fallbackModel?: ModelSelection;
   sessionId: string | null;
   permissionMode: string;
   themeName: string;
+  tokens: { input: number; output: number } | null;
+  currentTool: string | null;
+  planActive: boolean;
+  todo: { done: number; total: number } | null;
 }
 
-/** Single-line top bar: session, model, live state, and key hints. */
-export function StatusBar({
-  running,
-  model,
-  fallbackModel,
-  sessionId,
-  permissionMode,
-  themeName,
-}: StatusBarProps): React.JSX.Element {
+/**
+ * Single-line top bar: identity chips on the left, live state on the
+ * right (tool spinner, tokens, plan/todo badges, mode, theme).
+ */
+export function StatusBar(props: StatusBarProps): React.JSX.Element {
   const theme = useTheme();
-  const selection = model ?? fallbackModel;
+  const selection = props.model ?? props.fallbackModel;
   const left = [
-    "dsht",
+    theme.bold("dsht"),
     selection !== undefined ? selection.provider + "/" + selection.model : "no-model",
-    sessionId !== null ? sessionId.slice(0, 8) : "new session",
-  ].join(" · ");
-  const right = running ? <Spinner label="thinking…" /> : <Text>{theme.secondary("idle")}</Text>;
+    props.sessionId !== null ? props.sessionId.slice(0, 8) : "new session",
+  ].join(theme.secondary(" · "));
+
   return (
     <Box justifyContent="space-between">
-      <Text>{theme.secondary(left)}</Text>
+      <Text>{left}</Text>
       <Box gap={1}>
-        <Text>{theme.secondary(themeName)}</Text>
-        <Text>{theme.secondary("mode:" + permissionMode)}</Text>
-        {right}
-        <Text>{theme.secondary("esc=cancel  ctrl+c=exit")}</Text>
+        {props.planActive ? <Text>{theme.warning(" PLAN ")}</Text> : null}
+        {props.todo !== null ? (
+          <Text>{theme.secondary("☑ " + props.todo.done + "/" + props.todo.total)}</Text>
+        ) : null}
+        {props.running ? (
+          <Text>
+            <Spinner label={props.currentTool !== null ? props.currentTool : "thinking"} />
+          </Text>
+        ) : (
+          <Text>{theme.secondary("idle")}</Text>
+        )}
+        {props.tokens !== null ? (
+          <Text>
+            {theme.secondary("tok " + props.tokens.input + "↑" + props.tokens.output + "↓")}
+          </Text>
+        ) : null}
+        <Text>{theme.secondary("mode:" + props.permissionMode)}</Text>
+        <Text>{theme.secondary(props.themeName)}</Text>
       </Box>
     </Box>
   );

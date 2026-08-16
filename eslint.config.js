@@ -21,9 +21,10 @@ export default tseslint.config(
     rules: { ...reactHooks.configs.recommended.rules },
   },
   {
-    // Node entrypoints and scripts: process/console/import.meta are ambient.
+    // Node entrypoints and scripts: process/console/import.meta are ambient;
+    // ANSI-stripping regexes legitimately match control characters.
     files: ["**/bin/**", "**/*.mjs"],
-    rules: { "no-undef": "off" },
+    rules: { "no-undef": "off", "no-control-regex": "off" },
   },
   {
     rules: {

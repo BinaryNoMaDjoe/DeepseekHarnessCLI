@@ -14,9 +14,9 @@ export interface InputBoxProps {
 }
 
 /**
- * The prompt: a controlled buffer with cursor rendering, history recall,
- * backspace/delete, and paste-safe input (whole chunks with embedded
- * newlines are split into submissions).
+ * The prompt: a bordered input area with cursor rendering, history
+ * recall, backspace/delete, and paste-safe input (whole chunks with
+ * embedded newlines are split into submissions).
  */
 export function InputBox({
   history,
@@ -115,8 +115,6 @@ export function InputBox({
       if (input !== "") {
         if (input.includes("\r") || input.includes("\n")) {
           const segments = input.split(/\r\n|\r|\n/);
-          // Accumulate locally: submitting resets the buffer, and the stale
-          // closure must not re-append an already-submitted prefix.
           let carry = buffer;
           for (let i = 0; i < segments.length; i++) {
             const segment = segments[i] ?? "";
@@ -156,17 +154,23 @@ export function InputBox({
   const after = buffer.slice(cursor + 1);
 
   return (
-    <Box>
-      <Text>{theme.user("❯ ")}</Text>
-      {buffer === "" ? (
-        <Text>{theme.secondary("(type a message; /help for commands)")}</Text>
-      ) : (
-        <Text>
-          {before}
-          {theme.inverted(at === "" ? " " : at)}
-          {after}
-        </Text>
-      )}
+    <Box
+      borderStyle="round"
+      borderColor={theme.spec.mode === "light" ? "black" : "white"}
+      paddingX={1}
+    >
+      <Text>
+        {theme.user("❯ ")}
+        {buffer === "" ? (
+          theme.secondary("输入消息，/help 查看命令…")
+        ) : (
+          <Text>
+            {before}
+            {theme.inverted(at === "" ? " " : at)}
+            {after}
+          </Text>
+        )}
+      </Text>
     </Box>
   );
 }

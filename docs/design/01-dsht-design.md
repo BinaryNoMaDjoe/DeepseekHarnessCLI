@@ -152,8 +152,9 @@ bundle 解析双锚点：安装优先、profile 次之；`dsh-base` 来自安装
 ## 10.5 主题系统
 
 - 契约：`ThemeSpec {name, mode: dark|light, background, colors{11 键}}`（`packages/tui/src/theme.ts`）。
-- 内置两套基础主题表达 DSH 设计语言（克制、高级、高对比度黑白）：
-  `deepseek-dark`（黑底白字，反色强调）、`deepseek-light`（白底黑字）。
+- 内置两套基础主题表达 DSH 设计语言（克制、高级、高对比度）：
+  `deepseek-dark`（黑底白字）、`deepseek-light`（白底黑字）；文字主体黑白，
+  语义位置使用克制的彩色（diff 绿/红、状态图标、提示符强调色）。
 - 自定义：`$DSH_HOME/themes/<name>.json`（chalk 颜色名或 #hex）；`validateThemeSpec` 严格校验，
   非法主题回退默认；`buildTheme` 编译为可调用 token（错误标记与审批弹窗用反色块）。
 - 选择优先级：`--theme` > `DSH_TUI_THEME` > `$DSH_HOME/tui.json`（`/theme` 写入）> 默认。

@@ -25,6 +25,10 @@ export interface SessionUiState {
   approval: ApprovalRequest | null;
   tokens: { input: number; output: number } | null;
   exited: { code: number } | null;
+  /** The tool currently running (status bar spinner label). */
+  currentTool: string | null;
+  planActive: boolean;
+  todos: { content: string; status: "pending" | "in_progress" | "completed" }[];
 }
 
 const initial: SessionUiState = {
@@ -37,6 +41,9 @@ const initial: SessionUiState = {
   approval: null,
   tokens: null,
   exited: null,
+  currentTool: null,
+  planActive: false,
+  todos: [],
 };
 
 export class SessionStore {
@@ -63,14 +70,9 @@ export class SessionStore {
         // Full reset: nothing from the previous session may survive the
         // switch (streaming buffers, run state, tokens, approvals).
         this.set({
+          ...initial,
           sessionId: event.sessionId,
-          model: null,
-          items: [],
-          streaming: null,
-          running: false,
-          error: null,
-          approval: null,
-          tokens: null,
+          exited: null,
         });
         break;
       case "session/model":
@@ -88,7 +90,7 @@ export class SessionStore {
         this.set({ running: true, error: null });
         break;
       case "turn/end":
-        this.set({ running: false });
+        this.set({ running: false, currentTool: null });
         if (event.reason.kind === "error") {
           this.set({ error: event.reason.error.code + ": " + event.reason.error.message });
         }
@@ -110,6 +112,7 @@ export class SessionStore {
         break;
       case "tool/call":
         this.pushToolCall(event.call.id, event.call.name, event.call.arguments);
+        this.set({ currentTool: event.call.name });
         break;
       case "tool/result":
         this.setToolResult(event.call.id, event.ok, event.content);
@@ -119,6 +122,15 @@ export class SessionStore {
         break;
       case "surface/exit":
         this.set({ exited: { code: event.code } });
+        break;
+      case "todo/write":
+        this.set({
+          todos: event.todos,
+          currentTool: this.state.currentTool,
+        });
+        break;
+      case "plan/mode":
+        this.set({ planActive: event.active });
         break;
       case "surface/local":
         this.pushItem("local", event.text);

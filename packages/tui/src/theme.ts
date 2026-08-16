@@ -1,11 +1,12 @@
 import chalk, { type ChalkInstance } from "chalk";
 
 /**
- * Theme system. Two built-in base themes express the DeepSeek Harness
- * design language — restrained, premium, high-contrast black and white:
- * distinction comes from weight, dimming, and inversion, not hue.
- * Custom themes are plain JSON ThemeSpec files (any chalk color name or
- * #hex), loaded by the bundle from $DSH_HOME/themes/<name>.json.
+ * Theme system. The base themes express the DeepSeek Harness design
+ * language — restrained, premium, high-contrast — with a monochrome text
+ * base and muted semantic colors only where they carry meaning (diff,
+ * status, warnings), the same discipline as Claude Code's terminal.
+ * Custom themes are plain JSON ThemeSpec files (chalk color names or
+ * #hex), loaded from $DSH_HOME/themes/<name>.json.
  */
 
 export type ThemeMode = "dark" | "light";
@@ -46,6 +47,7 @@ export interface ThemeSpec {
 /** Resolved, callable theme — every token is a styling function. */
 export interface ThemeInstance {
   spec: ThemeSpec;
+  primary(text: string): string;
   user(text: string): string;
   local(text: string): string;
   tool(text: string): string;
@@ -56,13 +58,22 @@ export interface ThemeInstance {
   warning(text: string): string;
   code(text: string): string;
   heading(text: string): string;
+  bold(text: string): string;
+  italic(text: string): string;
+  inlineCode(text: string): string;
   diffAdd(text: string): string;
   diffDel(text: string): string;
   diffContext(text: string): string;
   inverted(text: string): string;
+  border(text: string): string;
+  borderActive(text: string): string;
 }
 
-/** The default dark theme: monochrome, high contrast, restrained. */
+/**
+ * The default dark theme: monochrome base, muted semantic accents.
+ * Text stays black-and-white; green/red/yellow/cyan appear only on diff
+ * markers, status icons, and the prompt accent.
+ */
 export const DEEPSEEK_DARK: ThemeSpec = {
   name: "deepseek-dark",
   mode: "dark",
@@ -70,14 +81,14 @@ export const DEEPSEEK_DARK: ThemeSpec = {
   colors: {
     primary: "white",
     secondary: "gray",
-    accent: "white",
-    success: "white",
-    error: "white",
-    warning: "white",
+    accent: "cyan",
+    success: "green",
+    error: "red",
+    warning: "yellow",
     code: "white",
     heading: "white",
-    diffAdd: "white",
-    diffDel: "gray",
+    diffAdd: "green",
+    diffDel: "red",
     diffContext: "gray",
   },
 };
@@ -90,14 +101,14 @@ export const DEEPSEEK_LIGHT: ThemeSpec = {
   colors: {
     primary: "black",
     secondary: "gray",
-    accent: "black",
-    success: "black",
-    error: "black",
-    warning: "black",
+    accent: "blue",
+    success: "green",
+    error: "red",
+    warning: "yellow",
     code: "black",
     heading: "black",
-    diffAdd: "black",
-    diffDel: "gray",
+    diffAdd: "green",
+    diffDel: "red",
     diffContext: "gray",
   },
 };
@@ -163,23 +174,30 @@ export function buildTheme(spec: ThemeSpec): ThemeInstance {
   const invertedStyle = spec.mode === "light" ? chalk.white.bgBlack : chalk.black.bgWhite;
 
   const inverted = (text: string): string => invertedStyle(text);
+  const borderStyle = spec.mode === "light" ? chalk.black : chalk.white;
 
   return {
     spec,
+    primary: (text) => colors.primary(text),
     user: (text) => colors.accent.bold(text),
     local: (text) => colors.secondary(text),
     tool: (text) => colors.primary.bold(text),
     ok: (text) => colors.success(text),
-    err: inverted,
+    err: (text) => colors.error(text),
     secondary: (text) => colors.secondary.dim(text),
     reasoning: (text) => colors.secondary.italic(text),
     warning: inverted,
     code: (text) => colors.code(text),
     heading: (text) => colors.heading.bold(text),
+    bold: (text) => colors.primary.bold(text),
+    italic: (text) => colors.primary.italic(text),
+    inlineCode: (text) => colors.code.bold(text),
     diffAdd: (text) => colors.diffAdd.bold(text),
     diffDel: (text) => colors.diffDel.strikethrough(text),
     diffContext: (text) => colors.diffContext.dim(text),
     inverted,
+    border: (text) => borderStyle.dim(text),
+    borderActive: (text) => borderStyle(text),
   };
 }
 
