@@ -8,7 +8,13 @@ import {
   type Answerer,
   type SdkEvent,
 } from "@deepseek-harness/sdk";
-import { startTui } from "@deepseek-harness/tui";
+import {
+  DEEPSEEK_DARK,
+  DEEPSEEK_LIGHT,
+  detectTerminalScheme,
+  startTui,
+} from "@deepseek-harness/tui";
+import { gitBadge } from "./git-badge.js";
 import { createDshAdapter, type DshAdapterServices } from "./dsh-adapter.js";
 import type { DshAgentHandle } from "./dsh-adapter.js";
 import { mountAnswererBridge } from "./answerer.js";
@@ -121,6 +127,25 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
   }
 
   // interactive
+  const themeName = startup.theme ?? themes.current();
+  let themeSpec: import("@deepseek-harness/tui").ThemeSpec | undefined; // eslint-disable-line @typescript-eslint/consistent-type-imports -- local inline type
+  if (themeName === "auto") {
+    const scheme = await detectTerminalScheme();
+    themeSpec = scheme === "light" ? DEEPSEEK_LIGHT : DEEPSEEK_DARK;
+  } else {
+    themeSpec = themes.load(themeName) ?? undefined;
+  }
+
+  const tui = startTui({
+    client,
+    approval: broker,
+    commands: [],
+    fallbackModel: modelService.currentSelection(),
+    permissionMode,
+    themeSpec,
+    gitBadge: await gitBadge(process.cwd()),
+  });
+
   const commands = buildCommands({
     ctx: c,
     client,
@@ -129,17 +154,9 @@ async function run(ctx: unknown, config: { mockLlm: boolean }): Promise<void> {
     saveModel: (selection) => modelService.saveSelection(selection),
     permissionMode,
     themes,
+    dialogs: () => tui.dialogs,
   });
-  const themeName = startup.theme ?? themes.current();
-  const themeSpec = themes.load(themeName) ?? undefined;
-  const tui = startTui({
-    client,
-    approval: broker,
-    commands,
-    fallbackModel: modelService.currentSelection(),
-    permissionMode,
-    themeSpec,
-  });
+  for (const command of commands) tui.repl.registerCommand(command);
 
   try {
     await attachInitial(client, adapter, startup);

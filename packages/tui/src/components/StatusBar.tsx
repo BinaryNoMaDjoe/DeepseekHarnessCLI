@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import type { ModelSelection } from "@deepseek-harness/sdk";
 import { useTheme } from "../theme-context.js";
+import { ProgressBar } from "./ProgressBar.js";
 import { Spinner } from "./Spinner.js";
 
 export interface StatusBarProps {
@@ -15,44 +16,83 @@ export interface StatusBarProps {
   currentTool: string | null;
   planActive: boolean;
   todo: { done: number; total: number } | null;
+  gitBadge: string | null;
 }
 
+const TIPS = [
+  "Ctrl+O 展开/折叠工具输出",
+  "/model 切换模型 · /theme 切换主题",
+  "/sessions 历史会话 · /resume <id> 恢复",
+  "/plan 计划模式 · /goal 长目标",
+  "Ctrl+Enter 换行 · ↑↓ 历史",
+  "/export 导出会话 · /status 状态",
+  "Esc 取消 · Ctrl+C 退出",
+  "/help 全部命令",
+];
+
+const TIP_INTERVAL_MS = 10000;
+
 /**
- * Single-line top bar: identity chips on the left, live state on the
- * right (tool spinner, tokens, plan/todo badges, mode, theme).
+ * Two-line footer (Kimi-style): identity + live state on line 1,
+ * context/progress + rotating tips on line 2.
  */
 export function StatusBar(props: StatusBarProps): React.JSX.Element {
   const theme = useTheme();
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((current) => current + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const selection = props.model ?? props.fallbackModel;
   const left = [
-    theme.bold("dsht"),
+    theme.strong("dsht"),
     selection !== undefined ? selection.provider + "/" + selection.model : "no-model",
     props.sessionId !== null ? props.sessionId.slice(0, 8) : "new session",
-  ].join(theme.secondary(" · "));
+    props.gitBadge !== null ? props.gitBadge : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(theme.muted(" · "));
+
+  const tip = TIPS[Math.floor((tick * 1000) / TIP_INTERVAL_MS) % TIPS.length]!;
+  const usage = props.tokens !== null ? formatTokens(props.tokens) : null;
 
   return (
-    <Box justifyContent="space-between">
-      <Text>{left}</Text>
-      <Box gap={1}>
-        {props.planActive ? <Text>{theme.warning(" PLAN ")}</Text> : null}
-        {props.todo !== null ? (
-          <Text>{theme.secondary("☑ " + props.todo.done + "/" + props.todo.total)}</Text>
-        ) : null}
-        {props.running ? (
-          <Text>
+    <Box flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text>{left}</Text>
+        <Box gap={1}>
+          {props.planActive ? <Text>{theme.warning("PLAN")}</Text> : null}
+          {props.todo !== null ? (
+            <Text>{theme.dim("☑ " + props.todo.done + "/" + props.todo.total)}</Text>
+          ) : null}
+          {props.running ? (
             <Spinner label={props.currentTool !== null ? props.currentTool : "thinking"} />
-          </Text>
-        ) : (
-          <Text>{theme.secondary("idle")}</Text>
-        )}
-        {props.tokens !== null ? (
-          <Text>
-            {theme.secondary("tok " + props.tokens.input + "↑" + props.tokens.output + "↓")}
-          </Text>
-        ) : null}
-        <Text>{theme.secondary("mode:" + props.permissionMode)}</Text>
-        <Text>{theme.secondary(props.themeName)}</Text>
+          ) : (
+            <Text>{theme.dim("idle")}</Text>
+          )}
+          <Text>{theme.dim("mode:" + props.permissionMode)}</Text>
+          <Text>{theme.dim(props.themeName)}</Text>
+        </Box>
+      </Box>
+      <Box justifyContent="space-between">
+        <Text>
+          {theme.muted("context")}{" "}
+          {usage !== null ? (
+            <ProgressBar ratio={Math.min(1, usage.ratio)} width={16} />
+          ) : (
+            theme.muted("—")
+          )}
+        </Text>
+        <Text>{theme.muted(tip)}</Text>
       </Box>
     </Box>
   );
+}
+
+function formatTokens(tokens: { input: number; output: number }): { ratio: number; text: string } {
+  // Ratio approximates context pressure; a precise context window arrives
+  // with the token-meter integration on the roadmap.
+  const ratio = Math.min(1, tokens.input / 200_000);
+  return { ratio, text: "tok " + tokens.input + "↑" + tokens.output + "↓" };
 }

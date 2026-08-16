@@ -6,7 +6,7 @@ import { useTheme } from "../theme-context.js";
 export interface InputBoxProps {
   history: string[];
   disabled: boolean;
-  /** True while an approval modal owns the keyboard; input is suspended. */
+  /** True while an approval or dialog modal owns the keyboard. */
   suspended: boolean;
   onSubmit(text: string): void;
   onCancel(): void;
@@ -14,9 +14,8 @@ export interface InputBoxProps {
 }
 
 /**
- * The prompt: a bordered input area with cursor rendering, history
- * recall, backspace/delete, and paste-safe input (whole chunks with
- * embedded newlines are split into submissions).
+ * The prompt: a rounded input panel (primary border) with cursor
+ * rendering, history recall, and paste-safe line splitting.
  */
 export function InputBox({
   history,
@@ -162,7 +161,7 @@ export function InputBox({
       <Text>
         {theme.user("❯ ")}
         {buffer === "" ? (
-          theme.secondary("输入消息，/help 查看命令…")
+          theme.muted("输入消息，/help 查看命令…")
         ) : (
           <Text>
             {before}

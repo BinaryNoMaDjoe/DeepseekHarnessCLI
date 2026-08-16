@@ -1,16 +1,18 @@
 /**
  * Diff support for the TUI:
- *  - unifiedDiff(before, after) computes a minimal line diff (LCS) between
- *    two texts.
- *  - parseDiff(text) renders an existing unified-diff string (the common
- *    shape of edit-tool outputs) into colored rows.
- *
- * LCS over lines is quadratic in the worst case but fine for the size of
- * diffs a TUI renders (a few hundred lines); callers truncate larger inputs.
+ *  - unifiedDiff(before, after) computes a minimal line diff (LCS);
+ *  - parseDiff(text) renders an existing unified-diff string into rows;
+ *  - diffWords(oldLine, newLine) computes intra-line changed words for
+ *    Claude-style word-level highlighting on replaced lines.
  */
 
 export interface DiffLine {
   kind: "context" | "add" | "del";
+  text: string;
+}
+
+export interface WordSegment {
+  kind: "add" | "del" | "same";
   text: string;
 }
 
@@ -19,8 +21,6 @@ type Op = { kind: "del" } | { kind: "add"; indexB: number } | { kind: "same"; in
 export function unifiedDiff(before: string, after: string, context = 3): DiffLine[] {
   const a = before.split("\n");
   const b = after.split("\n");
-  // Quadratic LCS is only safe for small inputs; beyond the budget fall
-  // back to a full-replace diff (still correct, linear time).
   if (a.length * b.length > 1_000_000) {
     return [
       ...a.map((text) => ({ kind: "del" as const, text })),
@@ -58,13 +58,13 @@ function lcsOps(a: string[], b: string[]): Op[] {
     for (let j = 1; j <= m; j++) {
       if (a[i - 1] === b[j - 1]) {
         curr[j] = prev[j - 1]! + 1;
-        row[j] = 0; // same
+        row[j] = 0;
       } else if ((prev[j] ?? 0) >= (curr[j - 1] ?? 0)) {
         curr[j] = prev[j] ?? 0;
-        row[j] = 1; // del (skip a)
+        row[j] = 1;
       } else {
         curr[j] = curr[j - 1] ?? 0;
-        row[j] = 2; // add (skip b)
+        row[j] = 2;
       }
     }
     prev.set(curr);
@@ -145,4 +145,38 @@ export function parseDiff(text: string): DiffLine[] {
 export function looksLikeDiff(text: string): boolean {
   const head = text.split("\n").slice(0, 6);
   return head.some((line) => /^\+{3} /.test(line) || /^-{3} /.test(line) || /^@@ /.test(line));
+}
+
+/**
+ * Intra-line word diff: split both lines into words and run the same LCS
+ * over word tokens. Used to bold the changed words inside a replaced line.
+ */
+export function diffWords(oldLine: string, newLine: string): WordSegment[] {
+  const oldWords = oldLine.split(/(\s+)/);
+  const newWords = newLine.split(/(\s+)/);
+  const ops = lcsOps(oldWords, newWords);
+  const out: WordSegment[] = [];
+  let ai = 0;
+  let bi = 0;
+  const pushText = (kind: WordSegment["kind"], text: string): void => {
+    if (text === "") return;
+    const last = out.at(-1);
+    if (last !== undefined && last.kind === kind)
+      out[out.length - 1] = { kind, text: last.text + text };
+    else out.push({ kind, text });
+  };
+  for (const op of ops) {
+    if (op.kind === "same") {
+      pushText("same", oldWords[ai] ?? "");
+      ai++;
+      bi++;
+    } else if (op.kind === "del") {
+      pushText("del", oldWords[ai] ?? "");
+      ai++;
+    } else {
+      pushText("add", newWords[bi] ?? "");
+      bi++;
+    }
+  }
+  return out;
 }

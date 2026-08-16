@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 (2026-08-16)
+
+视觉系统 v2：融合 Kimi Code 与 Claude Code 的终端 UI 工程并超越，品牌保持黑白。
+
+- 色彩系统 v2：30 语义 token（四级灰度文字层级、行级+词级 diff、子代理 8 色、
+  shimmer 变体），黑白=品牌（文字/边框/焦点/用户角色全灰度），彩色仅功能性语义；
+  内置主题：deepseek-dark/light + 色弱 daltonized 双主题 + auto（OSC11/OSC997 探测）。
+- 主题 schema v2：base + 部分覆盖 + displayName（hex 严格校验），v1 兼容。
+- diff 升级：行级背景色块 + 词级加粗高亮（Claude 式）。
+- 工具卡 v2：Ctrl+O 折叠/展开、六态状态图标（✓✗⚠ℹ○…）、预览行数上限。
+- thinking 块独立渲染（可折叠预留）；双行 footer（状态行 + context 行 + 轮换快捷键提示 + git 徽标）。
+- 对话框框架（Kimi DESIGN.md 规范：顶/底单边框、hint 行、❯ 指针、← current、搜索行、
+  滚动指示）；/sessions /theme /model 对话框化；审批弹窗对齐规范；多字段输入对话框。
+- shimmer spinner（双色帧动画）、八分之一精度进度条、StatusIcon/Byline 组件。
+- 测试：TUI 26 全绿；PTY e2e 覆盖 /theme 对话框流程；demo-frame 抓帧更新。
+
 ## 0.2.0 (2026-08-16)
 
 TUI 视觉升级（对标 Claude Code / Kimi Code 的终端 UI 工程学）。

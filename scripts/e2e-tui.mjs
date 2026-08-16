@@ -68,8 +68,10 @@ try {
   await waitFor((text) => text.includes("available commands"), 20000);
   console.log("[e2e] /help rendered — submit path works");
   term.write("/theme\r");
-  await waitFor((text) => text.includes("deepseek-dark") && text.includes("deepseek-light"), 20000);
-  console.log("[e2e] /theme listed the built-in themes");
+  await waitFor((text) => text.includes("DeepSeek Dark") && text.includes("DeepSeek Light"), 20000);
+  console.log("[e2e] /theme dialog listed the built-in themes");
+  term.write("\x1b");
+  await waitFor((text) => text.includes("cancelled"), 20000);
   term.write("/theme deepseek-light\r");
   await waitFor((text) => text.includes("theme set to deepseek-light"), 20000);
   console.log("[e2e] theme switch persisted");

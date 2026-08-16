@@ -9,9 +9,17 @@ export interface MessageViewProps {
   item: TranscriptItem;
   width: number;
   sessionRunning: boolean;
+  expandedCalls: Record<string, boolean>;
+  expandedThinking: Record<number, boolean>;
 }
 
-export function MessageView({ item, width, sessionRunning }: MessageViewProps): React.JSX.Element {
+export function MessageView({
+  item,
+  width,
+  sessionRunning,
+  expandedCalls,
+  expandedThinking: _expandedThinking,
+}: MessageViewProps): React.JSX.Element {
   const theme = useTheme();
   if (item.kind === "user") {
     return (
@@ -26,7 +34,17 @@ export function MessageView({ item, width, sessionRunning }: MessageViewProps): 
   if (item.kind === "local") {
     return (
       <Box flexDirection="column">
-        <Text>{theme.local(item.text)}</Text>
+        <Text>{theme.dim(item.text)}</Text>
+      </Box>
+    );
+  }
+  if (item.kind === "thinking") {
+    return (
+      <Box flexDirection="column">
+        <Text>
+          {theme.muted("● ")}
+          {theme.italic(item.text)}
+        </Text>
       </Box>
     );
   }
@@ -34,9 +52,15 @@ export function MessageView({ item, width, sessionRunning }: MessageViewProps): 
     <Box flexDirection="column">
       {item.text !== "" ? <BlockText text={item.text} width={width} /> : null}
       {item.toolCalls.map((call) => (
-        <ToolCallView key={call.id} call={call} width={width} sessionRunning={sessionRunning} />
+        <ToolCallView
+          key={call.id}
+          call={call}
+          width={width}
+          sessionRunning={sessionRunning}
+          expanded={expandedCalls[call.id] ?? false}
+        />
       ))}
-      {!item.finished && sessionRunning ? <Text>{theme.secondary("▍")}</Text> : null}
+      {!item.finished && sessionRunning ? <Text>{theme.dim("▍")}</Text> : null}
     </Box>
   );
 }

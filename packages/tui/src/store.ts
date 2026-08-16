@@ -9,11 +9,40 @@ import type { ApprovalRequest } from "@deepseek-harness/sdk";
 
 export interface TranscriptItem {
   id: number;
-  kind: "user" | "assistant" | "local";
+  kind: "user" | "assistant" | "local" | "thinking";
   text: string;
   toolCalls: { id: string; name: string; args: string; result?: { ok: boolean; text: string } }[];
   finished: boolean;
 }
+
+export interface DialogItem {
+  id: string;
+  label: string;
+  detail?: string;
+  meta?: string[];
+  current?: boolean;
+  danger?: boolean;
+}
+
+export type DialogRequest =
+  | {
+      kind: "list";
+      id: string;
+      title: string;
+      searchable: boolean;
+      multi: boolean;
+      items: DialogItem[];
+      hint?: string;
+    }
+  | {
+      kind: "fields";
+      id: string;
+      title: string;
+      fields: { key: string; label: string; value: string; placeholder?: string }[];
+      hint?: string;
+    };
+
+export type DialogResult = string[] | Record<string, string> | null;
 
 export interface SessionUiState {
   sessionId: string | null;
@@ -29,6 +58,11 @@ export interface SessionUiState {
   currentTool: string | null;
   planActive: boolean;
   todos: { content: string; status: "pending" | "in_progress" | "completed" }[];
+  /** Expanded tool calls (Ctrl+O toggles) and thinking blocks. */
+  expandedCalls: Record<string, boolean>;
+  expandedThinking: Record<number, boolean>;
+  /** Open modal dialog (searchable list or multi-field input). */
+  dialog: DialogRequest | null;
 }
 
 const initial: SessionUiState = {
@@ -44,6 +78,9 @@ const initial: SessionUiState = {
   currentTool: null,
   planActive: false,
   todos: [],
+  expandedCalls: {},
+  expandedThinking: {},
+  dialog: null,
 };
 
 export class SessionStore {
@@ -99,8 +136,17 @@ export class SessionStore {
       case "assistant/chunk":
         this.applyChunk(event.chunk);
         break;
-      case "assistant/message":
+      case "assistant/message": {
+        // Persist the reasoning buffer as a collapsible thinking block.
+        const messageReasoning = event.message.content
+          .filter((block) => block.type === "reasoning")
+          .map((block) => block.text)
+          .join("\n");
+        const reasoning = this.state.streaming?.reasoning ?? "";
         this.finishStreaming();
+        if (reasoning !== "" || messageReasoning !== "") {
+          this.pushThinking(reasoning !== "" ? reasoning : messageReasoning);
+        }
         if (event.usage !== undefined) {
           this.set({
             tokens: {
@@ -110,6 +156,7 @@ export class SessionStore {
           });
         }
         break;
+      }
       case "tool/call":
         this.pushToolCall(event.call.id, event.call.name, event.call.arguments);
         this.set({ currentTool: event.call.name });
@@ -147,6 +194,49 @@ export class SessionStore {
 
   clearApproval(): void {
     this.set({ approval: null });
+  }
+
+  toggleCall(id: string): void {
+    const expandedCalls = { ...this.state.expandedCalls };
+    expandedCalls[id] = !(expandedCalls[id] ?? false);
+    this.set({ expandedCalls });
+  }
+
+  /** Resolver paired with the open dialog (set by the dialog host). */
+  dialogResolve: ((result: DialogResult) => void) | null = null;
+
+  openDialog(request: DialogRequest): void {
+    this.set({ dialog: request });
+  }
+
+  resolveDialog(result: DialogResult): void {
+    const resolve = this.dialogResolve;
+    this.dialogResolve = null;
+    this.set({ dialog: null });
+    resolve?.(result);
+  }
+
+  cancelDialog(): void {
+    this.resolveDialog(null);
+  }
+
+  toggleThinking(id: number): void {
+    const expandedThinking = { ...this.state.expandedThinking };
+    expandedThinking[id] = !(expandedThinking[id] ?? false);
+    this.set({ expandedThinking });
+  }
+
+  private pushThinking(text: string): void {
+    if (text.trim() === "") return;
+    const items = [...this.state.items];
+    items.push({
+      id: this.nextId++,
+      kind: "thinking",
+      text,
+      toolCalls: [],
+      finished: true,
+    });
+    this.set({ items });
   }
 
   private pushItem(kind: TranscriptItem["kind"], text: string): void {

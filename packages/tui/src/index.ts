@@ -9,7 +9,7 @@ import type {
 } from "@deepseek-harness/sdk";
 import { createRepl } from "@deepseek-harness/sdk";
 import { App } from "./App.js";
-import { SessionStore } from "./store.js";
+import { SessionStore, type DialogRequest, type DialogResult } from "./store.js";
 import { buildTheme, DEFAULT_THEME, type ThemeInstance, type ThemeSpec } from "./theme.js";
 
 export interface StartTuiOptions {
@@ -23,11 +23,19 @@ export interface StartTuiOptions {
   themeSpec?: ThemeSpec;
   /** Pre-built instance (themeSpec is ignored when set). */
   themeInstance?: ThemeInstance;
+  /** Git branch badge for the footer (computed by the bundle). */
+  gitBadge?: string | null;
+}
+
+/** Host for modal dialogs: commands await user selection through this. */
+export interface DialogHost {
+  open(request: DialogRequest): Promise<DialogResult>;
 }
 
 export interface TuiInstance {
   store: SessionStore;
   repl: ReturnType<typeof createRepl>;
+  dialogs: DialogHost;
   waitForExit(): Promise<number>;
 }
 
@@ -68,6 +76,7 @@ export function startTui(options: StartTuiOptions): TuiInstance {
       repl,
       fallbackModel: options.fallbackModel,
       permissionMode: options.permissionMode,
+      gitBadge: options.gitBadge ?? null,
       theme:
         options.themeInstance ??
         (options.themeSpec !== undefined ? buildTheme(options.themeSpec) : DEFAULT_THEME),
@@ -85,9 +94,19 @@ export function startTui(options: StartTuiOptions): TuiInstance {
     { exitOnCtrlC: false },
   );
 
+  const dialogs: DialogHost = {
+    open(request: DialogRequest): Promise<DialogResult> {
+      return new Promise<DialogResult>((resolve) => {
+        store.dialogResolve = resolve;
+        store.openDialog(request);
+      });
+    },
+  };
+
   return {
     store,
     repl,
+    dialogs,
     async waitForExit(): Promise<number> {
       await app.waitUntilExit();
       return exitCode;
@@ -100,9 +119,12 @@ export { ThemeProvider, useTheme } from "./theme-context.js";
 export {
   BUILTIN_THEMES,
   DEEPSEEK_DARK,
+  DEEPSEEK_DARK_DALTONIZED,
   DEEPSEEK_LIGHT,
+  DEEPSEEK_LIGHT_DALTONIZED,
   DEFAULT_THEME,
   buildTheme,
+  detectTerminalScheme,
   validateThemeSpec,
 } from "./theme.js";
-export type { ThemeColors, ThemeInstance, ThemeMode, ThemeSpec } from "./theme.js";
+export type { ColorPalette, ThemeInstance, ThemeMode, ThemeSpec } from "./theme.js";

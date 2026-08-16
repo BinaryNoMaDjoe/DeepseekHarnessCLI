@@ -61,11 +61,12 @@ describe("ThemeManager", () => {
 
   it("persists and reads the selection", () => {
     const manager = new ThemeManager(HOME);
-    expect(manager.current()).toBe("deepseek-dark");
+    expect(manager.current()).toBe("auto");
     expect(manager.set("deepseek-light")).toBe(true);
     expect(manager.current()).toBe("deepseek-light");
+    expect(manager.set("auto")).toBe(true);
+    expect(manager.current()).toBe("auto");
     expect(manager.set("nope")).toBe(false);
-    expect(manager.current()).toBe("deepseek-light");
     expect(existsSync(join(HOME, "tui.json"))).toBe(true);
   });
 
@@ -73,7 +74,9 @@ describe("ThemeManager", () => {
     const manager = new ThemeManager(HOME);
     process.env.DSH_TUI_THEME = "deepseek-light";
     expect(manager.current()).toBe("deepseek-light");
+    process.env.DSH_TUI_THEME = "auto";
+    expect(manager.current()).toBe("auto");
     process.env.DSH_TUI_THEME = "missing";
-    expect(manager.current()).toBe("deepseek-dark");
+    expect(manager.current()).toBe("auto");
   });
 });

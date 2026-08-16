@@ -28,13 +28,13 @@ export function Inline({ nodes }: { nodes: InlineNode[] }): React.JSX.Element {
       {nodes.map((node, index) => {
         switch (node.type) {
           case "bold":
-            return <Text key={index}>{theme.bold(node.text)}</Text>;
+            return <Text key={index}>{theme.strong(node.text)}</Text>;
           case "italic":
             return <Text key={index}>{theme.italic(node.text)}</Text>;
           case "code":
             return <Text key={index}>{theme.inlineCode(node.text)}</Text>;
           default:
-            return <Text key={index}>{node.text}</Text>;
+            return <Text key={index}>{theme.text(node.text)}</Text>;
         }
       })}
     </Text>
@@ -52,8 +52,8 @@ function MarkdownRow({ node, width }: { node: MarkdownNode; width: number }): Re
       return (
         <Box marginTop={node.level <= 2 ? 1 : 0}>
           <Text>
-            {theme.heading(
-              node.level <= 2 ? "─ ".repeat(1) + inlineText(node.inline) : inlineText(node.inline),
+            {theme.strong(
+              node.level <= 2 ? "─ " + inlineText(node.inline) : inlineText(node.inline),
             )}
           </Text>
         </Box>
@@ -65,7 +65,7 @@ function MarkdownRow({ node, width }: { node: MarkdownNode; width: number }): Re
           {wrapText(node.text, Math.max(20, width - 4)).map((line, index) => (
             <Text key={index}>
               {theme.border("│ ")}
-              {theme.code(line)}
+              {theme.text(line)}
             </Text>
           ))}
           <Text>{theme.border("╰─")}</Text>
@@ -95,8 +95,8 @@ function MarkdownRow({ node, width }: { node: MarkdownNode; width: number }): Re
             <Text key={index}>
               {theme.border("│ ")}
               {dim
-                ? theme.heading(cell.padEnd(widths[index] ?? cell.length))
-                : theme.primary(cell.padEnd(widths[index] ?? cell.length))}{" "}
+                ? theme.strong(cell.padEnd(widths[index] ?? cell.length))
+                : theme.text(cell.padEnd(widths[index] ?? cell.length))}{" "}
             </Text>
           ))}
           {theme.border("│")}

@@ -56,26 +56,26 @@ dsht <args...>          # 等价于 dsh --profile tui <args...>（缺失 profile
 
 ## 4. 斜杠命令（完整清单）
 
-| 命令                      | 行为                                                                              |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `/help`                   | 列出全部命令                                                                      |
-| `/exit` `/quit`           | 结束会话退出（exit 0）                                                            |
-| `/model [provider model]` | 显示或设置默认模型（对新会话生效；如 `/model deepseek-official deepseek-v4-pro`） |
-| `/sessions`               | 列出持久化会话（完整 id + 标题）                                                  |
-| `/resume <id>`            | 切换至指定会话（旧句柄先销毁，历史回放）                                          |
-| `/new`                    | 新建会话（销毁当前）                                                              |
-| `/export`                 | 导出当前会话 JSONL（时间戳文件名，不覆盖）                                        |
-| `/status`                 | 显示会话/模型/权限模式                                                            |
-| `/theme [name]`           | 无参数列出主题；`/theme <name>` 切换（对新会话生效）                              |
-| `/plan`                   | 进入计划模式（委托 DSH plan-mode）                                                |
-| `/goal`                   | 管理长目标（委托 DSH goal 命令）                                                  |
-| `/compact`                | 压缩上下文（委托 DSH compaction）                                                 |
-| `/feedback`               | 记录会话反馈（委托 DSH）                                                          |
+| 命令                      | 行为                                                           |
+| ------------------------- | -------------------------------------------------------------- |
+| `/help`                   | 列出全部命令                                                   |
+| `/exit` `/quit`           | 结束会话退出（exit 0）                                         |
+| `/model [provider model]` | 无参数打开双字段对话框（Tab 切换、Enter 提交）；带参数直接设置 |
+| `/sessions`               | 打开会话选择对话框（可搜索、❯ 指针、Enter 恢复）               |
+| `/resume <id>`            | 切换至指定会话（旧句柄先销毁，历史回放）                       |
+| `/new`                    | 新建会话（销毁当前）                                           |
+| `/export`                 | 导出当前会话 JSONL（时间戳文件名，不覆盖）                     |
+| `/status`                 | 显示会话/模型/权限模式                                         |
+| `/theme [name]`           | 无参数打开主题选择对话框；`/theme <name>` 直接切换             |
+| `/plan`                   | 进入计划模式（委托 DSH plan-mode）                             |
+| `/goal`                   | 管理长目标（委托 DSH goal 命令）                               |
+| `/compact`                | 压缩上下文（委托 DSH compaction）                              |
+| `/feedback`               | 记录会话反馈（委托 DSH）                                       |
 
 交互键位：`Enter` 提交、`Ctrl+Enter` 换行、`↑/↓` 历史、`←/→` 移动光标、
 `Backspace/Delete` 编辑、`Esc` 清空输入（空输入时取消当前回合）、`Ctrl+C` 退出。
 
-### 界面布局（v0.2 视觉升级）
+### 界面布局（v0.3 视觉系统 v2）
 
 - **状态栏**：左 = 身份 chips（dsht · 模型 · 会话）；右 = 运行态（当前工具 spinner）、
   ☑ todo 进度、token 计数（↑输入 ↓输出）、PLAN 徽标、权限档、主题名。
@@ -111,39 +111,35 @@ headless 审批：`deny` 一律拒绝（默认，fail-closed）；`allow` 一律
 
 设计语言：**克制、高级、高对比度**——文字以黑白为主，仅语义位置使用克制的彩色（diff 绿/红、状态图标、提示符强调色），与 Claude Code 终端同一纪律。
 
-| 内置主题                | 说明                                                     |
-| ----------------------- | -------------------------------------------------------- |
-| `deepseek-dark`（默认） | 终端默认黑底，白色主文字，灰色弱化，反色强调（黑字白底） |
-| `deepseek-light`        | 白底黑字，反色强调（白字黑底）                           |
+| 内置主题                                        | 说明                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| `auto`（默认）                                  | 通过 OSC11/OSC997 探测终端深浅自动选择                         |
+| `deepseek-dark`                                 | 黑底白字，四级灰度文字层级，功能性语义色（diff 绿/红、状态色） |
+| `deepseek-light`                                | 白底黑字                                                       |
+| `deepseek-dark-daltonized` / `light-daltonized` | 色弱友好（蓝色系 diff 与成功态）                               |
+
+品牌规则：**黑白即品牌**——文字层级、边框、焦点、用户角色全部由灰度与字重表达；
+彩色只出现在功能性语义（diff、成功/失败/警告、子代理身份）。
 
 ### 6.1 自定义主题
 
-放入 `$DSH_HOME/themes/<name>.json`，与内置主题并存：
+放入 `$DSH_HOME/themes/<name>.json`（v2 schema：base + 部分覆盖，未指定的 token 回退到 base）：
 
 ```json
 {
   "name": "my-mono",
-  "mode": "dark",
-  "background": null,
+  "displayName": "My Mono",
+  "base": "dark",
   "colors": {
-    "primary": "white",
-    "secondary": "gray",
-    "accent": "#e6e6e6",
-    "success": "white",
-    "error": "white",
-    "warning": "white",
-    "code": "white",
-    "heading": "white",
-    "diffAdd": "white",
-    "diffDel": "gray",
-    "diffContext": "gray"
+    "primary": "#CCCCCC",
+    "diffAdded": "#4EC87E"
   }
 }
 ```
 
-规则：`mode` 取值 dark|light；`background` 为 chalk 颜色名、`#hex` 或 null（终端默认）；
-11 个 color 键全部必填（chalk 颜色名或 `#hex`）；未知键忽略；非法 JSON 或缺键的
-主题会被拒绝并回退默认主题，绝不崩溃。`/theme` 会列出全部可用主题。
+规则：颜色必须是 `#RRGGBB`；未知 token 键或非法值 → 主题被拒绝并回退默认（绝不崩溃）；
+v1（11 键完整 schema）仍兼容；完整 token 清单见 `packages/tui/src/theme.ts` 的
+`ColorPalette`（四级文字层级、行级/词级 diff、子代理 8 色、shimmer）。
 
 ### 6.2 选择优先级
 

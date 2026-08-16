@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import type { DshClient, SlashCommand } from "@deepseek-harness/sdk";
+import type { DialogHost } from "@deepseek-harness/tui";
 import { DshAgentHandle, type DshAdapter } from "./dsh-adapter.js";
 import type { ThemeManager } from "./theme-manager.js";
 
@@ -20,6 +21,8 @@ export interface CommandDeps {
   saveModel(selection: { provider: string; model: string }): Promise<void>;
   permissionMode: string;
   themes: ThemeManager;
+  /** Lazily resolves the dialog host (the TUI instance owns it). */
+  dialogs: () => DialogHost;
 }
 
 export function buildCommands(deps: CommandDeps): SlashCommand[] {
@@ -55,18 +58,46 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
   return [
     {
       name: "model",
-      description: "show or set the default model (provider model)",
+      description: "show or set the default model (dialog)",
       async run(args, context) {
-        if (args.length === 0) {
-          const current = deps.currentModel();
-          context.emitLocal("model: " + current.provider + "/" + current.model);
+        if (args.length > 0) {
+          const [provider, model] = parseModelArgs(args);
+          if (provider === null || model === null) {
+            context.emitLocal("usage: /model [provider model]");
+            return;
+          }
+          await deps.saveModel({ provider, model });
+          context.emitLocal(
+            "default model set to " + provider + "/" + model + " (applies to new sessions)",
+          );
           return;
         }
-        const [provider, model] = parseModelArgs(args);
-        if (provider === null || model === null) {
-          context.emitLocal("usage: /model [provider model]");
+        const current = deps.currentModel();
+        const result = await deps.dialogs().open({
+          kind: "fields",
+          id: "model-dialog",
+          title: "Set default model",
+          fields: [
+            {
+              key: "provider",
+              label: "provider",
+              value: current.provider,
+              placeholder: "deepseek-official",
+            },
+            {
+              key: "model",
+              label: "model",
+              value: current.model,
+              placeholder: "deepseek-v4-flash",
+            },
+          ],
+        });
+        if (result === null || Array.isArray(result)) {
+          context.emitLocal("cancelled");
           return;
         }
+        const provider = result["provider"] ?? current.provider;
+        const model = result["model"] ?? current.model;
         await deps.saveModel({ provider, model });
         context.emitLocal(
           "default model set to " + provider + "/" + model + " (applies to new sessions)",
@@ -75,18 +106,39 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "sessions",
-      description: "list persisted sessions (resume with /resume <id>)",
+      description: "pick a persisted session (resumes it)",
       async run(_args, context) {
-        const sessions = await deps.adapter.listSessions(undefined, 20);
+        const sessions = await deps.adapter.listSessions(undefined, 100);
         if (sessions.length === 0) {
           context.emitLocal("no persisted sessions");
           return;
         }
-        context.emitLocal(
-          sessions
-            .map((session) => "  " + session.id + "  " + (session.title ?? "(untitled)"))
-            .join("\n"),
-        );
+        const selected = await deps.dialogs().open({
+          kind: "list",
+          id: "sessions-dialog",
+          title: "Resume a session",
+          searchable: true,
+          multi: false,
+          items: sessions.map((session) => ({
+            id: session.id,
+            label: session.title ?? "(untitled)",
+            detail: session.id.slice(0, 12),
+          })),
+        });
+        if (selected === null || !Array.isArray(selected) || selected.length === 0) {
+          context.emitLocal("cancelled");
+          return;
+        }
+        const id = selected[0]!;
+        const previous = deps.client.current;
+        await previous?.dispose?.();
+        try {
+          const handle = await deps.client.resumeSession(id);
+          (handle as DshAgentHandle).replayHistory((event) => deps.client.events.emit(event));
+          context.emitLocal("resumed " + id);
+        } catch (error) {
+          context.emitLocal(error instanceof Error ? error.message : String(error));
+        }
       },
     },
     {
@@ -162,40 +214,45 @@ export function buildCommands(deps: CommandDeps): SlashCommand[] {
     },
     {
       name: "theme",
-      description: "list themes, or switch with /theme <name>",
+      description: "pick or switch the theme (dialog)",
       async run(args, context) {
         const name = args[0];
-        if (name === undefined || name === "") {
-          const current = deps.themes.current();
-          const rows = deps.themes
-            .available()
-            .map((entry) => {
-              const marker = entry.name === current ? " *" : "  ";
-              return (
-                marker +
-                " " +
-                entry.name +
-                (entry.builtin ? " (builtin)" : "") +
-                " [" +
-                entry.mode +
-                "]"
-              );
-            })
-            .join("\n");
-          context.emitLocal(
-            "themes:\n" + rows + "\ncurrent: " + current + " — switch with /theme <name>",
-          );
+        if (name !== undefined && name !== "") {
+          if (!deps.themes.set(name)) {
+            context.emitLocal(
+              "unknown theme: " +
+                name +
+                " — built-ins: auto, deepseek-dark, deepseek-light, daltonized variants; custom themes live in $DSH_HOME/themes/<name>.json",
+            );
+            return;
+          }
+          context.emitLocal("theme set to " + name + " (applies to new sessions)");
           return;
         }
-        if (!deps.themes.set(name)) {
-          context.emitLocal(
-            "unknown theme: " +
-              name +
-              " — built-ins: deepseek-dark, deepseek-light; custom themes live in $DSH_HOME/themes/<name>.json",
-          );
+        const current = deps.themes.current();
+        const selected = await deps.dialogs().open({
+          kind: "list",
+          id: "theme-dialog",
+          title: "Select a theme",
+          searchable: false,
+          multi: false,
+          items: deps.themes.available().map((entry) => ({
+            id: entry.name,
+            label: entry.displayName,
+            detail: entry.mode,
+            current: entry.name === current,
+          })),
+        });
+        if (selected === null || !Array.isArray(selected) || selected.length === 0) {
+          context.emitLocal("cancelled");
           return;
         }
-        context.emitLocal("theme set to " + name + " (applies to new sessions)");
+        const picked = selected[0]!;
+        if (!deps.themes.set(picked)) {
+          context.emitLocal("unknown theme: " + picked);
+          return;
+        }
+        context.emitLocal("theme set to " + picked + " (applies to new sessions)");
       },
     },
     {

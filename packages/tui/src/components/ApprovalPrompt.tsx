@@ -9,9 +9,8 @@ export interface ApprovalPromptProps {
 }
 
 /**
- * Modal approval prompt: y=allow once, a=allow always, n=deny, esc=deny.
- * Question requests render their options with arrow navigation and space
- * to toggle multi-select; enter confirms the selection.
+ * Modal approval prompt, aligned with the dialog spec: top/bottom
+ * borders, bold title, muted hint line, ❯ pointer for question options.
  */
 export function ApprovalPrompt({ request, onDecide }: ApprovalPromptProps): React.JSX.Element {
   const theme = useTheme();
@@ -49,40 +48,36 @@ export function ApprovalPrompt({ request, onDecide }: ApprovalPromptProps): Reac
     }
   });
 
-  if (request.question === undefined) {
-    return (
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={theme.spec.mode === "light" ? "black" : "white"}
-      >
-        <Text>{theme.warning("⚠ " + request.prompt)}</Text>
-        <Text>{theme.secondary("y=allow once   a=allow always   n=deny   esc=deny")}</Text>
-      </Box>
-    );
-  }
+  const title = request.question !== undefined ? request.question.question : request.prompt;
+  const hint =
+    request.question !== undefined
+      ? "↑↓ navigate · Space toggle · Enter confirm · Esc cancel"
+      : "y allow once · a allow always · n deny · Esc deny";
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={theme.spec.mode === "light" ? "black" : "white"}
-    >
-      <Text>{theme.warning("? " + request.question.question)}</Text>
+    <Box flexDirection="column">
+      <Text>{theme.border("─".repeat(80))}</Text>
+      <Text>{theme.strong(" " + title)}</Text>
+      <Text>{theme.muted(" " + hint)}</Text>
       {options.map((option, index) => {
-        const marker = index === selected ? "›" : " ";
-        const check = multi && toggled.has(option.label) ? "[x]" : multi ? "[ ]" : "";
-        const label = index === selected ? theme.user(option.label) : option.label;
+        const pointer = index === selected ? theme.primary("❯ ") : "  ";
+        const check =
+          multi && toggled.has(option.label)
+            ? theme.success("[x] ")
+            : multi
+              ? theme.muted("[ ] ")
+              : "";
+        const label = index === selected ? theme.strong(option.label) : theme.text(option.label);
         return (
           <Text key={option.label}>
-            {marker} {check} {label}
-            {option.description !== undefined
-              ? " " + theme.secondary("— " + option.description)
-              : ""}
+            {pointer}
+            {check}
+            {label}
+            {option.description !== undefined ? theme.muted("  — " + option.description) : ""}
           </Text>
         );
       })}
-      <Text>{theme.secondary("↑/↓ navigate   space=toggle   enter=confirm   esc=cancel")}</Text>
+      <Text>{theme.border("─".repeat(80))}</Text>
     </Box>
   );
 }
